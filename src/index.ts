@@ -17,6 +17,14 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
   const config: Config = loadConfig()
 
+  // Get chat IDs from environment variables and config
+  const defaultChatIds = Array.from(
+    new Set([
+      process.env.TELEGRAM_CHAT_ID || "",
+      ...(config.allowed_chat_ids || []),
+    ]),
+  ).filter(Boolean)
+
   const telegramClient = new TelegramClient(config.telegram_bot_token)
   const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
   const workSummarizer = new WorkSummarizer()
@@ -37,9 +45,15 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
   return {
     event: async ({ event }) => {
+      console.log("[TelegramPlugin] Event:", event.type, "-", event.title)
+      console.log("  Default chat IDs:", defaultChatIds)
+
       const sessionId = event.session_id || event.sessionId || event.properties?.session_id
 
-      if (!sessionId) return
+      if (!sessionId) {
+        console.log("  [TelegramPlugin] No session_id, skipping")
+        return
+      }
 
       const projectDir = event.payload?.directory || directory
       const projectName = getProjectNameFromDirectory(projectDir, config)
@@ -47,7 +61,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       if (!projectContext.has(projectDir)) {
         projectContext.set(projectDir, {
           projectId: projectName,
-          telegramChatIds: [],
+          telegramChatIds: defaultChatIds,
           eventHistory: [],
           workInProgress: false,
           lastSessionId: sessionId,
@@ -84,6 +98,8 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
           }
         }
       }
+
+      console.log("  Using chat IDs:", context.telegramChatIds)
 
       await eventHandler.handle(event, projectDir, projectName, context.telegramChatIds, { telegramClient: telegramClient.sendMessage.bind(telegramClient) })
     },
@@ -127,7 +143,14 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     },
 
     config: async () => {
-      console.log("[TelegramPlugin] Initialized - directory:", directory)
+      console.log("\n===== [TelegramPlugin] Initialized =====")
+      console.log("  Directory:", directory)
+      console.log("  Bot token set:", !!(config.telegram_bot_token))
+      console.log("  Projects:", config.projects?.length || 0)
+      console.log("  DEFAULT CHAT IDS:", defaultChatIds)
+      console.log("  Chat IDs count:", defaultChatIds.length)
+      console.log("  TELEGRAM_CHAT_ID env:", process.env.TELEGRAM_CHAT_ID || "NOT SET")
+      console.log("================================\n")
     },
   }
 }

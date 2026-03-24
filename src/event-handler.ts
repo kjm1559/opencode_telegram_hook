@@ -26,7 +26,15 @@ export class EventHandler {
       telegramClient: TelegramSendFn
     },
   ) {
-    if (chatIds.length === 0) return
+    console.log("[EventHandler] Received event:", event.type)
+    console.log("  Project:", projectName)
+    console.log("  Chat IDs received:", chatIds)
+    console.log("  Chat IDs count:", chatIds.length)
+
+    if (chatIds.length === 0) {
+      console.log("  [EventHandler] SKIPPING: No chat IDs available")
+      return
+    }
 
     const shouldNotify = this.shouldNotify(event.type)
     if (!shouldNotify) return

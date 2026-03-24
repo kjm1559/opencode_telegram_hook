@@ -74,6 +74,13 @@ User Input              Plugin Processing              OpenCode Output
 - **Project tags**: Automatic `[Project Name]` prefix on all notifications
 - **Auto-discovery**: Projects registered via `directory` hook parameter
 
+### 5. Event Tracking (WIP)
+
+- **Real-time agent work updates**: See every action as it happens
+- **Tool usage monitoring**: Track `edit`, `write`, `bash`, test execution
+- **Session lifecycle**: Start, progress, completion notifications
+- **Completion summaries**: Final reports with actions, files, test results
+
 ### 2. Message Routing
 
 - **With project prefix**: `[proj-name] your message` → routes to specific project
@@ -110,18 +117,30 @@ bun run build
 export TELEGRAM_BOT_TOKEN="your-bot-token-here"
 
 # Optional
-export TELEGRAM_USERIDS="123456789,987654321"  # Allowed user IDs
+export TELEGRAM_CHAT_ID="your-telegram-chat-id"  # Target chat ID
+export ALLOWED_CHAT_IDS="123456789,987654321"  # Allowed user IDs
 export NOTIFICATION_LEVEL="all"  # all, summary-only, errors-only
+export MAX_EVENTS_PER_SUMMARY="100"  # Max events in summary
+export PROJECTS='{"projects": [{"display_name": "my-api", "directory": "/path/to/project"}]}'  # Project mapping
 ```
 
 ### Register with OpenCode
 
-Add to your `opencode.json`:
+Add to your `~/.config/opencode/opencode.json` or project-specific `opencode.json`:
 
 ```json
 {
-  "plugins": ["file:///path/to/opencode_telegram_hook/dist/index.js"]
+  "plugin": [
+    "oh-my-opencode@latest",
+    "file:///path/to/opencode_telegram_hook/dist/index.js"
+  ]
 }
+```
+
+**Build the plugin first:**
+```bash
+cd opencode_telegram_hook
+bun run build
 ```
 
 ## Usage

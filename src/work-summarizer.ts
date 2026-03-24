@@ -91,14 +91,16 @@ export class WorkSummarizer {
               session_id?: string
             }
           }
-          directory: string
+          directory?: string
         }
       }>
     },
     projectName: string,
   ): string | null {
-    const projectDir = context.eventHistory[0]?.payload?.directory || "unknown"
-    const data = this.trackedData.get(projectDir)
+    const sessionOrDir = context.eventHistory[0]?.payload?.event?.session_id || 
+                         context.eventHistory[0]?.payload?.event?.sessionId ||
+                         context.eventHistory[0]?.payload?.directory || "unknown"
+    const data = this.trackedData.get(sessionOrDir)
 
     if (!data || (data.filesModified.length === 0 && data.commands.length === 0)) {
       return null
@@ -139,7 +141,7 @@ export class WorkSummarizer {
       "Ready for next task. 🎉",
     ].join("\n")
 
-    this.clear(projectDir)
+    this.clear(sessionOrDir)
 
     return summary
   }

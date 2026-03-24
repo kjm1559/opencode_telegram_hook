@@ -24,6 +24,33 @@ export class TelegramClient {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
   }
 
+  escapeMarkdownV2(text: string): string {
+    const chars = ['\\\\', '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    let result = text
+    
+    result = result.replace(/\\/g, '\\\\')
+    result = result.replace(/\_/g, '\\_')
+    result = result.replace(/\*/g, '\\*')
+    result = result.replace(/\[/g, '\\[')
+    result = result.replace(/\]/g, '\\]')
+    result = result.replace(/\(/g, '\\(')
+    result = result.replace(/\)/g, '\\)')
+    result = result.replace(/~/g, '\\~')
+    result = result.replace(/`/g, '\\`')
+    result = result.replace(/>/g, '\\>')
+    result = result.replace(/#/g, '\\#')
+    result = result.replace(/\+/g, '\\+')
+    result = result.replace(/-/g, '\\-')
+    result = result.replace(/=/g, '\\=')
+    result = result.replace(/\|/g, '\\|')
+    result = result.replace(/\{/g, '\\{')
+    result = result.replace(/\}/g, '\\}')
+    result = result.replace(/\./g, '\\.')
+    result = result.replace(/!/g, '\\!')
+    
+    return result
+  }
+
   async sendMessage(params: Telegram.SendMessageParams): Promise<boolean> {
     if (!this.botToken) {
       console.error("[Telegram] BOT_TOKEN not configured")
@@ -38,7 +65,7 @@ export class TelegramClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: params.chat_id,
-          text: params.text,
+          text: params.parse_mode === "MarkdownV2" ? this.escapeMarkdownV2(params.text) : params.text,
           parse_mode: params.parse_mode || "MarkdownV2",
           reply_to_message_id: params.reply_to_message_id,
         }),
@@ -72,7 +99,7 @@ export class TelegramClient {
     if (lower.startsWith("/help") || lower === "help") {
       return {
         type: "help",
-        message: "Show help",
+        message: "Commands: /start, /help, /status, /cancel, /new\n",
       }
     }
 

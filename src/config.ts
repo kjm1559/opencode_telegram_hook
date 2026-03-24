@@ -1,11 +1,11 @@
 import z from "zod"
-import * as fs from "fs"
-import * as path from "path"
+import * as fs from "node:fs"
+import * as path from "node:path"
 
 export const ProjectConfigSchema = z.object({
-  display_name: z.string(),  // Project name shown in Telegram
-  directory: z.string().absolute(),  // Absolute path to project root
-  agent_name: z.string().optional().default("default"),  // Which agent to use
+  display_name: z.string(),
+  directory: z.string().refine((p) => p.startsWith("/"), "Directory must be absolute path"),
+  agent_name: z.string().optional().default("default"),
 })
 
 export const ConfigSchema = z.object({
