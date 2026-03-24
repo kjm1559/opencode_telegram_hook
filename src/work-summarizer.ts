@@ -17,19 +17,19 @@ export class WorkSummarizer {
   }>()
 
   trackFileModification(
-    sessionId: string,
+    projectDir: string,
     file: string,
     action: string = "modified",
   ) {
-    if (!this.trackedData.has(sessionId)) {
-      this.trackedData.set(sessionId, {
+    if (!this.trackedData.has(projectDir)) {
+      this.trackedData.set(projectDir, {
         filesModified: [],
         tests: [],
         commands: [],
       })
     }
 
-    const data = this.trackedData.get(sessionId)!
+    const data = this.trackedData.get(projectDir)!
     data.filesModified.push({
       file,
       action,
@@ -38,18 +38,18 @@ export class WorkSummarizer {
   }
 
   trackTestRun(
-    sessionId: string,
+    projectDir: string,
     success: boolean,
   ) {
-    if (!this.trackedData.has(sessionId)) {
-      this.trackedData.set(sessionId, {
+    if (!this.trackedData.has(projectDir)) {
+      this.trackedData.set(projectDir, {
         filesModified: [],
         tests: [],
         commands: [],
       })
     }
 
-    const data = this.trackedData.get(sessionId)!
+    const data = this.trackedData.get(projectDir)!
     data.tests.push({
       success,
       timestamp: Date.now(),
@@ -57,19 +57,19 @@ export class WorkSummarizer {
   }
 
   trackCommandExecution(
-    sessionId: string,
+    projectDir: string,
     command: string,
     success: boolean,
   ) {
-    if (!this.trackedData.has(sessionId)) {
-      this.trackedData.set(sessionId, {
+    if (!this.trackedData.has(projectDir)) {
+      this.trackedData.set(projectDir, {
         filesModified: [],
         tests: [],
         commands: [],
       })
     }
 
-    const data = this.trackedData.get(sessionId)!
+    const data = this.trackedData.get(projectDir)!
     data.commands.push({
       command,
       success,
@@ -91,19 +91,16 @@ export class WorkSummarizer {
               session_id?: string
             }
           }
+          directory: string
         }
       }>
     },
+    projectName: string,
   ): string | null {
-    const sessionId = (
-      context.eventHistory[0]?.payload?.event?.session_id ||
-      context.eventHistory[0]?.payload?.event?.sessionId ||
-      context.eventHistory[0]?.payload?.event?.properties?.session_id ||
-      "unknown"
-    )
-    const data = this.trackedData.get(sessionId)
+    const projectDir = context.eventHistory[0]?.payload?.directory || "unknown"
+    const data = this.trackedData.get(projectDir)
 
-    if (!data || (data.filesModified.length === 0 || data.commands.length === 0)) {
+    if (!data || (data.filesModified.length === 0 && data.commands.length === 0)) {
       return null
     }
 
@@ -132,7 +129,7 @@ export class WorkSummarizer {
     }
 
     const summary = [
-      "✅ **Work Completed**!",
+      `✅ **[${projectName}] Work Completed**!`,
       "",
       "**Actions**:",
       ...sections,
@@ -142,14 +139,12 @@ export class WorkSummarizer {
       "Ready for next task. 🎉",
     ].join("\n")
 
-    if (data.filesModified.length === 0 && data.commands.length === 0) {
-      return null
-    }
+    this.clear(projectDir)
 
     return summary
   }
 
-  clear(sessionId: string) {
-    this.trackedData.delete(sessionId)
+  clear(projectDir: string) {
+    this.trackedData.delete(projectDir)
   }
 }

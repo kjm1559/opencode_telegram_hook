@@ -1,68 +1,130 @@
 import { createOpencodeClient, type OpencodeClient } from "@opencode-ai/sdk"
-import { Telegram } from "./telegram-client"
+import { type Telegram } from "./telegram-client"
+import { type Config, getDirectoryFromProjectName } from "./config"
+
+type TelegramSendFn = (params: Telegram.SendMessageParams) => Promise<boolean>
 
 export class MessageRelay {
   private readonly client: OpencodeClient
-  private readonly telegramClient: {
-    (params: Telegram.SendMessageParams): Promise<boolean>
-  }
-  private readonly activeSessions = new Map<string, string>()
+  private readonly telegramClient: TelegramSendFn
+  private readonly config: Config
+  private readonly activeSessions = new Map<string, {
+    sessionId: string
+    projectName: string
+    projectDir: string
+  }>()
 
   constructor(options: {
     client: OpencodeClient
-    telegramClient: {
-      (params: Telegram.SendMessageParams): Promise<boolean>
-    }
+    telegramClient: TelegramSendFn
+    config: Config
   }) {
     this.client = options.client
     this.telegramClient = options.telegramClient
+    this.config = options.config
   }
 
-  async relayMessageToOpenCode({
-    telegramMessage,
+  async relayMessageFromTelegram({
     chatId,
+    message,
   }: {
-    telegramMessage: Telegram.ParsedMessage
     chatId: string
+    message: string
   }): Promise<boolean> {
-    if (telegramMessage.type === "start") {
-      return await this.handleStartCommand(chatId)
+    if (message.startsWith("/")) {
+      return await this.handleCommand(chatId, message)
     }
 
-    if (telegramMessage.type === "help") {
-      return await this.telegramClient({
-        chat_id: chatId,
-        text: telegramMessage.message,
-        parse_mode: "MarkdownV2",
-      })
+    const { projectName, content } = this.parseProjectTag(message)
+
+    if (projectName) {
+      return await this.forwardToProject(chatId, projectName, content)
     }
 
-    if (telegramMessage.type === "cancel") {
-      return await this.handleCancelCommand(chatId)
+    return await this.forwardToLastActive(chatId, message)
+  }
+
+  private parseProjectTag(message: string): { projectName: string | null; content: string } {
+    const match = message.match(/^\[([^\]]+)\]\s+(.*)$/s)
+
+    if (match) {
+      return { projectName: match[1], content: match[2] }
     }
 
-    if (telegramMessage.type === "status") {
+    return { projectName: null, content: message }
+  }
+
+  async handleCommand(chatId: string, command: string): Promise<boolean> {
+    const parts = command.split(/\s+/)
+    const cmd = parts[0].toLowerCase()
+    const args = parts.slice(1)
+
+    if (cmd === "/start") {
+      return await this.handleStartCommand(chatId, args[0])
+    }
+
+    if (cmd === "/help") {
+      return await this.handleHelpCommand(chatId)
+    }
+
+    if (cmd === "/cancel") {
+      return await this.handleCancelCommand(chatId, args[0])
+    }
+
+    if (cmd === "/status") {
       return await this.handleStatusCommand(chatId)
     }
 
-    return await this.forwardToSession(chatId, telegramMessage.message)
+    if (cmd === "/new") {
+      return await this.handleNewSessionCommand(chatId, args.slice(0).join(" "))
+    }
+
+    if (cmd === "/projects") {
+      return await this.handleProjectsListCommand(chatId)
+    }
+
+    return await this.telegramClient({
+      chat_id: chatId,
+      text: `❓ Unknown command: ${cmd}\n\nUse /help to see available commands.\n\n---\n`,
+      parse_mode: "MarkdownV2",
+    })
   }
 
-  async handleStartCommand(
-    chatId: string,
-  ): Promise<boolean> {
+  async handleStartCommand(chatId: string, projectName?: string): Promise<boolean> {
     try {
       const sessions = await this.client.session.list()
       const activeSession = sessions.find((s) => s.active) ?? sessions[0]
 
       if (activeSession) {
-        this.activeSessions.set(chatId, activeSession.id)
+        if (projectName) {
+          const projectDir = getDirectoryFromProjectName(projectName, this.config) || activeSession.directory || ""
+          this.activeSessions.set(projectName, {
+            sessionId: activeSession.id,
+            projectName,
+            projectDir,
+          })
 
-        return await this.telegramClient({
-          chat_id: chatId,
-          text: `✅ Session initialized\n\nSession ID: \`${activeSession.id.substring(0, 8)}...\`\n\nSend your task request.`,
-          parse_mode: "MarkdownV2",
-        })
+          return await this.telegramClient({
+            chat_id: chatId,
+            text: `✅ Linked \`${projectName}\` to latest session\n\nSession ID: \`${activeSession.id.substring(0, 8)}...\`\n\nSend message like:\n\n\`\`\`[${projectName}] your task\`\`\``,
+            parse_mode: "MarkdownV2",
+          })
+        }
+
+        if (activeSession.directory) {
+          const generatedName = activeSession.directory.split(/[\\/]/).pop() || "default-project"
+          this.activeSessions.set(generatedName, {
+            sessionId: activeSession.id,
+            projectName: generatedName,
+            projectDir: activeSession.directory,
+          })
+
+          return await this.telegramClient({
+            chat_id: chatId,
+            text: `✅ Session initialized\n\nSession ID: \`${activeSession.id.substring(0, 8)}...\`\nProject: \`${generatedName}\`\n\nSend your task request.\n\n---\n`,
+            parse_mode: "MarkdownV2",
+          })
+        }
       }
 
       return await this.telegramClient({
@@ -80,20 +142,113 @@ export class MessageRelay {
     }
   }
 
-  async handleCancelCommand(chatId: string): Promise<boolean> {
-    const sessionId = this.activeSessions.get(chatId)
+  async handleHelpCommand(chatId: string): Promise<boolean> {
+    const helpText = [
+      "📚 **Available Commands**:",
+      "",
+      "/start [project]  — Link to latest session (or specific project)",
+      "/help            — Show this message",
+      "/new [project]    — Create new session for project",
+      "/status          — Show all active projects & sessions",
+      "/projects        — List configured projects",
+      "/cancel [proj]   — Stop work on project (defaults to last active)",
+      "",
+      "**Message Format**:",
+      "\`\`\`[project-name] your task\`\`\`",
+      "",
+      "Example:",
+      "\`\`\`[backend-api] add authentication endpoint\`\`\`",
+      "",
+      "---",
+    ].join("\n")
 
-    if (!sessionId) {
+    return await this.telegramClient({
+      chat_id: chatId,
+      text: helpText,
+      parse_mode: "MarkdownV2",
+    })
+  }
+
+  async handleNewSessionCommand(chatId: string, projectName?: string): Promise<boolean> {
+    if (!projectName) {
       return await this.telegramClient({
         chat_id: chatId,
-        text: "⚠️ No active session linked.\n\nUse /start first.\n\n---\n",
+        text: "⚠️ Usage: /new project-name\n\nExample: /new my-feature\n\n---\n",
+        parse_mode: "MarkdownV2",
+      })
+    }
+
+    const projectDir = getDirectoryFromProjectName(projectName, this.config)
+
+    if (!projectDir) {
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: `⚠️ Project \`${projectName}\` not found in configuration.\n\nConfigure projects in telegram-plugin-config.json\n\n---\n`,
         parse_mode: "MarkdownV2",
       })
     }
 
     try {
-      const response = await this.client.session.prompt({
-        path: { id: sessionId },
+      const newSession = await this.client.session.create({
+        body: {
+          mode: "create",
+          directory: projectDir,
+        },
+      })
+
+      if (!newSession.id) {
+        return await this.telegramClient({
+          chat_id: chatId,
+          text: "❌ Failed to create session.\n\n---\n",
+          parse_mode: "MarkdownV2",
+        })
+      }
+
+      this.activeSessions.set(projectName, {
+        sessionId: newSession.id,
+        projectName,
+        projectDir,
+      })
+
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: `✅ New session created for \`${projectName}\`\n\nSession ID: \`${newSession.id.substring(0, 8)}...\`\nDirectory: \`${projectDir.substring(0, 50)}...\`\n\nSend your task:\n\`\`\`[${projectName}] your request\`\`\`\n\n---\n`,
+        parse_mode: "MarkdownV2",
+      })
+    } catch (error) {
+      console.error("[MessageRelay] Failed to create session:", error)
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: `❌ Failed to create session: ${error instanceof Error ? error.message : String(error)}\n\n---\n`,
+        parse_mode: "MarkdownV2",
+      })
+    }
+  }
+
+  async handleCancelCommand(chatId: string, projectName?: string): Promise<boolean> {
+    const targetProject = projectName || this.getLastActiveProject()
+
+    if (!targetProject) {
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: "⚠️ No active projects found.\n\nUse /start first.\n\n---\n",
+        parse_mode: "MarkdownV2",
+      })
+    }
+
+    const sessionInfo = this.activeSessions.get(targetProject)
+
+    if (!sessionInfo) {
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: `⚠️ Project \`${targetProject}\` not linked.\n\nUse /start or /new first.\n\n---\n`,
+        parse_mode: "MarkdownV2",
+      })
+    }
+
+    try {
+      await this.client.session.prompt({
+        path: { id: sessionInfo.sessionId },
         body: {
           parts: [
             {
@@ -104,112 +259,192 @@ export class MessageRelay {
         },
       })
 
-      if (response.success) {
-        await this.telegramClient({
-          chat_id: chatId,
-          text: "🛑 Work cancellation sent.\n\nThe agent will stop shortly.\n\n---\n",
-          parse_mode: "MarkdownV2",
-        })
-      }
-
-      return response.success ?? true
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: `🛑 Cancellation sent for \`${targetProject}\`.\n\nThe agent will stop shortly.\n\n---\n`,
+        parse_mode: "MarkdownV2",
+      })
     } catch (error) {
       console.error("[MessageRelay] Failed to cancel:", error)
       return await this.telegramClient({
         chat_id: chatId,
-        text: "❌ Failed to cancel work.\n\n---\n",
+        text: `❌ Failed to cancel \`${targetProject}\`.\n\n---\n`,
         parse_mode: "MarkdownV2",
       })
     }
   }
 
   async handleStatusCommand(chatId: string): Promise<boolean> {
-    const sessionId = this.activeSessions.get(chatId)
-
-    if (!sessionId) {
+    if (this.activeSessions.size === 0) {
       return await this.telegramClient({
         chat_id: chatId,
-        text: "⚠️ No active session.\n\nUse /start first.\n\n---\n",
+        text: "⚠️ No active projects.\n\nUse /start to link a session.\n\n---\n",
         parse_mode: "MarkdownV2",
       })
     }
 
-    try {
-      const session = await this.client.session.get({
-        path: { id: sessionId },
-      })
+    let statusText = [
+      "📊 **Active Projects**:",
+      "",
+    ]
 
-      const status =[
-        `📊 Session Status:`,
-        `ID: \`${sessionId.substring(0, 8)}...\``,
-        `Agent: \`${session.agent || "default"}\``,
-        `Model: \`${session.model || "unknown"}\``,
-        `Status: \`${session.status || "unknown"}\``,
-        "\n---\n",
-      ].join("\n")
+    for (const [projectName, info] of this.activeSessions.entries()) {
+      try {
+        const session = await this.client.session.get({
+          path: { id: info.sessionId },
+        })
 
-      return await this.telegramClient({
-        chat_id: chatId,
-        text: status,
-        parse_mode: "MarkdownV2",
-      })
-    } catch (error) {
-      console.error("[MessageRelay] Failed to get status:", error)
-      return await this.telegramClient({
-        chat_id: chatId,
-        text: "❌ Failed to get status.\n\n---\n",
-        parse_mode: "MarkdownV2",
-      })
+        const statusLabel = session.active ? "● Active" : "○ Idle"
+        statusText.push(
+          `• \`${projectName}\` (\`${info.sessionId.substring(0, 8)}...\`) — ${statusLabel}`,
+        )
+      } catch {
+        statusText.push(
+          `• \`${projectName}\` (\`${info.sessionId.substring(0, 8)}...\`) — ⚠️ Status unknown`,
+        )
+      }
     }
+
+    statusText.push("")
+    statusText.push(`**Total**: ${this.activeSessions.size} projects`)
+    statusText.push("\n---\n")
+
+    return await this.telegramClient({
+      chat_id: chatId,
+      text: statusText.join("\n"),
+      parse_mode: "MarkdownV2",
+    })
   }
 
-  async forwardToSession(
-    chatId: string,
-    message: string,
-  ): Promise<boolean> {
-    const sessionId = this.activeSessions.get(chatId)
-
-    if (!sessionId) {
+  async handleProjectsListCommand(chatId: string): Promise<boolean> {
+    if (!this.config.projects || this.config.projects.length === 0) {
       return await this.telegramClient({
         chat_id: chatId,
-        text: "⚠️ No active session linked.\n\nUse /start first.\n\n---\n",
+        text: "⚠️ No projects configured.\n\nAdd projects to telegram-plugin-config.json\n\n---\n",
         parse_mode: "MarkdownV2",
       })
+    }
+
+    const projectList = this.config.projects.map((p, idx) => `\`${idx + 1}. ${p.display_name}\` — ${p.directory}`)
+
+    const text = [
+      "📁 **Configured Projects**:",
+      "",
+      ...projectList,
+      "",
+      `
+Use \`/new project-name\` to create new session.
+Use \`[project-name] message\` to send messages.
+\n---\n`,
+    ].join("\n")
+
+    return await this.telegramClient({
+      chat_id: chatId,
+      text,
+      parse_mode: "MarkdownV2",
+    })
+  }
+
+  async forwardToProject(chatId: string, projectName: string, message: string): Promise<boolean> {
+    let sessionInfo = this.activeSessions.get(projectName)
+
+    if (!sessionInfo) {
+      const projectDir = getDirectoryFromProjectName(projectName, this.config)
+      const sessions = await this.client.session.list()
+      const activeSession = sessions.find((s) => s.directory === projectDir)
+
+      if (!activeSession) {
+        return await this.telegramClient({
+          chat_id: chatId,
+          text: `⚠️ No active session for \`${projectName}\`.\n\nUse \`/new ${projectName}\` to create one.\n\n---\n`,
+          parse_mode: "MarkdownV2",
+        })
+      }
+
+      sessionInfo = {
+        sessionId: activeSession.id,
+        projectName,
+        projectDir: projectDir || activeSession.directory || "",
+      }
+      this.activeSessions.set(projectName, sessionInfo)
     }
 
     try {
       await this.client.session.prompt({
-        path: { id: sessionId },
+        path: { id: sessionInfo.sessionId },
         body: {
           parts: [{ type: "text", text: message }],
         },
       })
 
-      await this.telegramClient({
+      return await this.telegramClient({
         chat_id: chatId,
-        text: `📨 Message sent to session \`${sessionId.substring(0, 8)}...\`\n\nWaiting for agent response...\n\n---\n`,
+        text: `📨 Sent to \`${projectName}\`\n\nWaiting for agent response...\n\n---\n`,
         parse_mode: "MarkdownV2",
       })
-
-      return true
     } catch (error) {
       console.error("[MessageRelay] Failed to forward message:", error)
       return await this.telegramClient({
         chat_id: chatId,
-        text: `❌ Failed to send message: ${error instanceof Error ? error.message : String(error)}\n\n---\n`,
+        text: `❌ Failed to send to \`${projectName}\`: ${error instanceof Error ? error.message : String(error)}\n\n---\n`,
         parse_mode: "MarkdownV2",
       })
     }
   }
 
-  linkSession(
-    chatId: string,
-    sessionId: string,
-  ) {
-    this.activeSessions.set(chatId, sessionId)
+  async forwardToLastActive(chatId: string, message: string): Promise<boolean> {
+    const lastActive = this.getLastActiveProject()
+
+    if (!lastActive) {
+      return await this.telegramClient({
+        chat_id: chatId,
+        text: "⚠️ No active projects.\n\nUse \`/start\` to link a session or specify project in message:\n\n\`\`\`[project-name] your message\`\`\`\n\n---\n",
+        parse_mode: "MarkdownV2",
+      })
+    }
+
+    return await this.forwardToProject(chatId, lastActive, message)
   }
 
-  unlinkSession(chatId: string) {
-    this.activeSessions.delete(chatId)
+  getLastActiveProject(): string | null {
+    if (this.activeSessions.size === 0) return null
+
+    let lastProject = null
+    let lastTime = 0
+
+    for (const [name, info] of this.activeSessions.entries()) {
+      if (Date.now() - lastTime < 300000) {
+        lastProject = name
+        lastTime = Date.now()
+      }
+    }
+
+    for (const [key] of this.activeSessions) {
+      return key
+    }
+
+    return lastProject
+  }
+
+  getActiveSessions(): Map<string, {
+    sessionId: string
+    projectName: string
+    projectDir: string
+  }> {
+    return this.activeSessions
+  }
+
+  setActiveSession(
+    projectName: string,
+    sessionInfo: {
+      sessionId: string
+      projectDir: string
+    },
+  ) {
+    this.activeSessions.set(projectName, {
+      sessionId: sessionInfo.sessionId,
+      projectName,
+      projectDir: sessionInfo.projectDir,
+    })
   }
 }

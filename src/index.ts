@@ -3,27 +3,28 @@ import { TelegramClient } from "./telegram-client"
 import { EventHandler } from "./event-handler"
 import { WorkSummarizer } from "./work-summarizer"
 import { MessageRelay } from "./message-relay"
+import {
+  loadConfig,
+  loadProjectState,
+  saveProjectState,
+  getProjectNameFromDirectory,
+  type Config,
+  type ProjectSessionState,
+} from "./config"
 
-/**
- * OpenCode Telegram Plugin
- * 
- * Integrates OpenCode agent work with Telegram:
- * - Real-time work updates
- * - Completion summaries
- * - Bidirectional message relay
- */
 export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const { client, directory, worktree } = input
 
-  // Initialize core components
-  const telegramClient = new TelegramClient()
-  const eventHandler = new EventHandler(telegramClient)
-  const workSummarizer = new WorkSummarizer()
-  const messageRelay = new MessageRelay({ client, telegramClient })
+  const config: Config = loadConfig()
 
-  // Session-work tracking state
-  const sessionContext = new Map<string, {
-    telegramChatId?: string
+  const telegramClient = new TelegramClient(config.telegram_bot_token)
+  const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
+  const workSummarizer = new WorkSummarizer()
+  const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
+
+  const projectContext = new Map<string, {
+    projectId: string
+    telegramChatIds: Array<string>
     eventHistory: Array<{
       type: string
       title: string
@@ -31,120 +32,102 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       payload: any
     }>
     workInProgress: boolean
+    lastSessionId: string | null
   }>()
 
   return {
-    /**
-     * Event hook: Listen to all OpenCode events
-     * - Agent activity (thinking, tool calls)
-     * - Tool execution results
-     * - Session lifecycle
-     */
     event: async ({ event }) => {
-      // Extract session info from event
       const sessionId = event.session_id || event.sessionId || event.properties?.session_id
-      
+
       if (!sessionId) return
 
-      // Initialize session context
-      if (!sessionContext.has(sessionId)) {
-        sessionContext.set(sessionId, {
+      const projectDir = event.payload?.directory || directory
+      const projectName = getProjectNameFromDirectory(projectDir, config)
+
+      if (!projectContext.has(projectDir)) {
+        projectContext.set(projectDir, {
+          projectId: projectName,
+          telegramChatIds: [],
           eventHistory: [],
           workInProgress: false,
+          lastSessionId: sessionId,
         })
       }
 
-      const context = sessionContext.get(sessionId)!
+      const context = projectContext.get(projectDir)!
+      context.lastSessionId = sessionId
 
-      // Track event
       context.eventHistory.push({
         type: event.type,
         title: event.title || event.type,
         timestamp: Date.now(),
-        payload: {
-          event,
-          directory,
-          worktree,
-        },
+        payload: { event, directory: projectDir, worktree },
       })
 
-      // Detect work start
       if (event.type === "session.started" || event.type === "message.created") {
         context.workInProgress = true
       }
 
-      // Detect work completion
       if (event.type === "session.completed" || event.type === "session.finished") {
         if (context.workInProgress) {
           context.workInProgress = false
-          
-          // Generate and send summary
-          const summary = workSummarizer.generate(context)
-          if (context.telegramChatId && summary) {
-            await telegramClient.sendMessage({
-              chatId: context.telegramChatId,
-              text: summary,
-              format: "markdownv2",
-            })
+
+          const summary = workSummarizer.generate(context, projectName)
+          for (const chatId of context.telegramChatIds) {
+            if (summary) {
+              await telegramClient.sendMessage({
+                chat_id: chatId,
+                text: summary,
+                parse_mode: "MarkdownV2",
+              })
+            }
           }
         }
       }
 
-      // Forward agent output to Telegram
-      await eventHandler.handle(event, sessionId, context, { telegramClient, directory, worktree })
+      await eventHandler.handle(event, projectDir, projectName, context.telegramChatIds, { telegramClient: telegramClient.sendMessage.bind(telegramClient) })
     },
 
-    /**
-     * Chat message hook: Before message sent to LLM
-     * - Capture user intent
-     * - Link Telegram chat to session
-     */
     "chat.message": async (input, output) => {
       const sessionId = input.sessionID
-      const context = sessionContext.get(sessionId)
-      
-      if (context?.telegramChatId) {
-        // Log user message to Telegram
-        await telegramClient.sendMessage({
-          chatId: context.telegramChatId,
-          text: `📝 User: ${output.message?.content || "[message content]"}`,
-        })
+
+      for (const [dir, ctx] of projectContext.entries()) {
+        if (ctx.lastSessionId === sessionId && ctx.telegramChatIds.length > 0) {
+          const projectName = getProjectNameFromDirectory(dir, config)
+          for (const chatId of ctx.telegramChatIds) {
+            await telegramClient.sendMessage({
+              chat_id: chatId,
+              text: `[${projectName}] 📝 User: ${output.message?.content || "[message content]"}`,
+              parse_mode: "MarkdownV2",
+            })
+          }
+        }
       }
     },
 
-    /**
-     * Tool execution hook: Track tool usage
-     * - File operations
-     * - Command execution
-     * - Build/test results
-     */
     "tool.execute.after": async (input) => {
       const sessionId = input.sessionID
-      const context = sessionContext.get(sessionId)
 
-      if (!context || !context.workInProgress) return
+      for (const [dir, ctx] of projectContext.entries()) {
+        if (ctx.lastSessionId === sessionId && ctx.workInProgress) {
+          if (input.tool === "edit" || input.tool === "write") {
+            workSummarizer.trackFileModification(
+              dir,
+              input.args?.filePath || "unknown",
+              input.output?.title || "modified",
+            )
+          }
 
-      // Track tool results for summary
-      if (input.tool === "edit" || input.tool === "write") {
-        workSummarizer.trackFileModification(
-          sessionId,
-          input.args?.filePath || "unknown",
-          input.output?.title || "modified",
-        )
-      }
-
-      if (input.tool === "bash" && (input.args?.command || "").includes("test")) {
-        const success = !input.output?.output?.includes("failed") && !input.output?.output?.includes("error")
-        workSummarizer.trackTestRun(sessionId, success)
+          if (input.tool === "bash" && (input.args?.command || "").includes("test")) {
+            const success = !input.output?.output?.includes("failed") && !input.output?.output?.includes("error")
+            workSummarizer.trackTestRun(dir, success)
+          }
+        }
       }
     },
 
-    /**
-     * Configuration hook: Validate plugin settings
-     */
-    config: async (config) => {
-      // Could validate TELEGRAM_BOT_TOKEN presence or other settings
-      console.log("[TelegramPlugin] Config loaded", { directory })
+    config: async () => {
+      console.log("[TelegramPlugin] Initialized - directory:", directory)
     },
   }
 }

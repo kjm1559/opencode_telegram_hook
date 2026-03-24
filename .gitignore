@@ -46,3 +46,8 @@ credentials.*
 # Bundle artifacts
 *.bundle
 *.min.js
+
+# OpenCode workspace
+opencode/
+.telegram-plugin-state.json
+telegram-plugin-config.json

@@ -1,35 +1,42 @@
-import { sendTelegramMessage, type Telegram } from "./telegram-client"
+import { type Telegram } from "./telegram-client"
+import { type Config } from "./config"
+
+type TelegramSendFn = (params: Telegram.SendMessageParams) => Promise<boolean>
 
 export class EventHandler {
-  private readonly telegramClient: typeof sendTelegramMessage
   private readonly throttledEvents = new Map<string, number>()
   private readonly throttleMs = 1000
+  private readonly telegramClient: TelegramSendFn
+  private readonly config: Config
 
-  constructor(telegramClient: typeof sendTelegramMessage) {
+  constructor(
+    telegramClient: TelegramSendFn,
+    config: Config,
+  ) {
     this.telegramClient = telegramClient
+    this.config = config
   }
 
   async handle(
     event: any,
-    sessionId: string,
-    context: {
-      telegramChatId?: string
-      eventHistory: Array<any>
-    },
+    projectDir: string,
+    projectName: string,
+    chatIds: Array<string>,
     deps: {
-      telegramClient: typeof sendTelegramMessage
-      directory: string
-      worktree: string
+      telegramClient: TelegramSendFn
     },
   ) {
-    const { telegramChatId } = context
-
-    if (!telegramChatId) return
+    if (chatIds.length === 0) return
 
     const shouldNotify = this.shouldNotify(event.type)
     if (!shouldNotify) return
 
-    await this.sendToTelegram(event, telegramChatId, deps)
+    const text = this.formatEvent(event, projectDir, projectName)
+    if (!text) return
+
+    for (const chatId of chatIds) {
+      await this.notify(chatId, text)
+    }
   }
 
   private shouldNotify(eventType: string): boolean {
@@ -47,25 +54,14 @@ export class EventHandler {
     return shouldTrackEvents.some((pattern) => eventType.includes(pattern))
   }
 
-  private async sendToTelegram(
-    event: any,
-    chatId: string,
-    deps: {
-      directory: string
-      worktree: string
-    },
-  ) {
-    const now = Date.now()
-
+  private formatEvent(event: any, projectDir: string, projectName: string): string | null {
     if (event.type === "message.created" || event.type === "message.part.updated") {
-      return await this.handleMessageUpdate(event, chatId)
+      return this.formatMessageUpdate(event, projectName)
     }
 
     if (event.type === "tool.execute.before") {
-      return await this.notify(
-        chatId,
-        `🔧 Using tool: \`${event.toolName || event.arguments?.tool || "unknown"}\`",
-      )
+      const toolName = event.toolName || event.arguments?.tool || "unknown"
+      return `[${projectName}] 🔧 Using tool: \`${toolName}\`\n\n---\n`
     }
 
     if (event.type === "tool.execute.after") {
@@ -73,77 +69,65 @@ export class EventHandler {
       const icon = success ? "✅" : "⚠️"
       const title = event.output?.title || "Tool executed"
 
-      const text = [`\`${icon} ${title}\``]
+      const lines = [`[${projectName}] \`${icon} ${title}\``]
 
       if (event.output?.output?.substring) {
-        text.push(event.output.output.substring(0, 256))
+        lines.push(event.output.output.substring(0, 256))
       }
 
-      return await this.notify(chatId, text.join("\n\n"))
+      lines.push("\n---\n")
+      return lines.join("\n\n")
     }
 
     if (event.type === "command.executed") {
       const cmd = event.arguments?.command || event.command || "command"
-      const text = [`💻 Command: \`${cmd}\``]
+      const lines = [`[${projectName}] 💻 Command: \`${cmd}\``]
 
       if (event.output) {
-        text.push(event.output.substring(0, 256))
+        lines.push(event.output.substring(0, 256))
       }
 
-      return await this.notify(chatId, text.join("\n\n"))
+      lines.push("\n---\n")
+      return lines.join("\n\n")
     }
 
     if (event.type === "lsp.client.diagnostics") {
       const errors = (event.properties?.errors || []).length || 0
       const warnings = (event.properties?.warnings || []).length || 0
 
-      if (errors > 0 || warnings > 0) {
-        const text = [
-          `🐛 LSP Diagnostics:`,
-          `Errors: \`${errors}\``,
-          `Warnings: \`${warnings}\`\n`,
-          `Dir: \`${deps.directory.substring(0, 50)}...\`\n`,
-        ]
+      if (errors === 0 && warnings === 0) return null
 
-        return await this.notify(chatId, text.join("\n"))
-      }
+      const lines = [
+        `[${projectName}] 🐛 LSP Diagnostics:`,
+        `Errors: \`${errors}\``,
+        `Warnings: \`${warnings}\`\n`,
+        `\n---\n`,
+      ]
+
+      return lines.join("\n")
     }
 
     if (event.type === "session.started") {
-      return await this.notify(
-        chatId,
-        `🚀 New session started\n\nDir: \`${deps.directory.substring(0, 50)}...\`\nWorktree: \`${deps.worktree.substring(0, 30)}...\`\n\n---\n`,
-      )
+      const dir = event.payload?.directory || projectDir
+      return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${event.payload?.worktree?.substring(0, 30) || "default"}...\`\n\n---\n`
     }
 
     if (event.type === "session.completed") {
-      return await this.notify(
-        chatId,
-        `✅ Session completed\n\nSee summary below for details.\n\n---\n`,
-      )
+      return `[${projectName}] ✅ Session completed\n\nSee summary below for details.\n\n---\n`
     }
 
-    const genericText = `\`[${event.type}]\`\n\`${event.title || "No title"}\``
-    await this.notify(chatId, genericText)
+    return `[${projectName}] \`[${event.type}]\`\n\`${event.title || "No title"}\`\n\n---\n`
   }
 
-  private async handleMessageUpdate(
-    event: any,
-    chatId: string,
-  ) {
+  private formatMessageUpdate(event: any, projectName: string): string | null {
     const part = event.part || event.properties?.part
     const role = part?.role || event.role
     const content = part?.content || event.message?.content || ""
 
-    if (!content || typeof content !== "string") return
+    if (!content || typeof content !== "string") return null
 
     const sender = role === "assistant" ? "🤖 Agent" : "👤 User"
-    const text = [
-      `${sender}:`,
-      `\`\`\`\n${content.substring(0, 500)}\n\`\`\`\n`,
-    ]
-
-    await this.notify(chatId, text.join(""))
+    return `[${projectName}] ${sender}:\n\n\`\`\`\n${content.substring(0, 500)}\n\`\`\`\n\n---\n`
   }
 
   private async notify(chatId: string, text: string): Promise<boolean> {

@@ -1,235 +1,300 @@
-# opencode_telegram_hook
+# OpenCode Telegram Plugin (Apache-2.0)
 
 Telegram integration plugin for [OpenCode](https://opencode.ai) — receive AI agent work updates via Telegram, send messages to control agents, and get final work summaries.
 
 ## Overview
 
-This project adds Telegram chat functionality to OpenCode, enabling:
-
-- **Real-time notifications**: Receive streaming text output from agent work as it happens
-- **Work completion summaries**: Get organized final reports when agent tasks finish
-- **Bidirectional control**: Send commands from Telegram to OpenCode agents
-- **Agent orchestration**: Leverage OpenCode's agent system (build, plan, specialized subagents) for task execution
-
-## Features
-
-### 1. Agent Work Notifications
-
-When OpenCode agents perform work, the plugin hooks into the ACP (Agent Client Protocol) and forwards:
-
-- Text output from agent thinking and tool usage
-- File operations and command execution results
-- Error states and recovery attempts
-
-### 2. Completion Summaries
-
-When agent work completes:
-
-- Consolidated work summary with key actions taken
-- Files modified/created list
-- Test results and build status (if applicable)
-- Clear completion status indicator
-
-### 3. Message Relay
-
-Supports bi-directional communication:
-
-- Send user messages from Telegram → OpenCode session
-- Receive responses and contextual follow-ups in Telegram
-
-### 4. Integration with OpenCode
-
-Leverages existing OpenCode infrastructure:
-
-- **ACP integration**: Hooks into `packages/opencode/src/acp/` for agent interface
-- **Session management**: Works with `SessionService` and `MessageService`
-- **Agent system**: Supports `build`, `plan`, `general`, and custom agents
-- **Plugin API**: Follows `packages/plugin` architecture for extensibility
+This plugin integrates OpenCode agent work with Telegram with **project-based organization**:
+- **Multiple projects, single chat**: One Telegram channel for multiple OpenCode projects
+- **Automatic project routing**: Messages routed by project name prefix
+- **Last active session**: Each project connects to its most recent session
+- **Dynamic project tags**: Every notification shows project origin
+- **New session creation**: Start fresh sessions per project
 
 ## Architecture
 
-```plaintext
-Telegram Bot        OpenCode Plugin        OpenCode Core
-┌─────────────┐    ┌─────────────────┐    ┌──────────────────┐
-│  User Msg   │───>│  MessageParser  │───>│  SessionService  │
-│  Updates    │<───│  Notification   │<───│  ACP Stream      │
-│  Commands   │───>│  WorkSummarizer │───>│  Agent/Task      │
-└─────────────┘    └─────────────────┘    └──────────────────┘
+### N:1 Project-to-Telegram Model
+
+```
+┌───┬───────┬─────┬────────────────────────────────────────────────────┐
+│   │       │     │              OpenCode Projects                    │
+│   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
+│   │       │     │  │Proj A  │  │Proj B  │  │Proj C  │              │
+│   │       │     │  │  /a    │  │  /b    │  │  /c    │              │
+│   │       │     │  └───┬───┘  └───┬───┘  └───┬───┘              │
+│   │       │     │      │          │          │                   │
+│   │       │     │      └────┬─────┴───┬──────┘                   │
+│   │       │     │           │         │                          │
+│   │       │     │     Last Active Session                        │
+│   │       │     │           │         │                          │
+└───┴───────┴─────┴──────────────┬──────┴───────┘                   │
+                                │                                  │
+                                ▼                                  │
+┌──────────────────────────────────────────────────────────────────┤
+│                        Telegram Chat                            │
+│  ┌───────────────────────────────────────────────────────┐       │
+│  │ [Project A] 🤖 Agent: Understanding requirements...   │       │
+│  │ [Project B] ✅ Tests: 8/8 passed                      │       │
+│  │ [Project C] 🔧 Edited src/auth.ts                     │       │
+│  └───────────────────────────────────────────────────────┘       │
+└──────────────────────────────────────────────────────────────────┘
 ```
 
-### Key Integration Points
+### Message Flow
 
-1. **ACP Stream** (`packages/opencode/src/acp/agent-interface.ts`)
-   - Intercept real-time agent output via ACP events
-   - Forward to Telegram as streaming text
+```
+User Input              Plugin Processing              OpenCode Output
+──────────            ───────────────────             ────────────────
+"[proj-a] fix bug" ──▶  Parse project tag ────────────▶
+                            │                           │
+                            ▼ Find project directory    │
+                     /home/project/a                    │
+                            │                           │
+                            ▼ Get last active session   │
+                     session_abc123                     │
+                            │                           │
+                            ▼ Inject message ───────────▶
+                                      │                        │
+                                      ▼                        │
+                              Agent works                   │
+                                      │                        │
+                                      ▼ Stream events ◀───────┤
+                                      │                        │
+                            ┌─────────┴──────────┐           │
+                            ▼                    ▼           │
+                      [Project A]            [Project A]     │
+                      thinking...            edited file     │
+```
 
-2. **Plugin System** (`packages/plugin`)
-   - Follows official OpenCode plugin architecture
-   - Can be installed via `opencode plugin add` or manual integration
+## Key Features
 
-3. **Session Management**
-   - Maintains context between Telegram messages and OpenCode sessions
-   - Supports multiple concurrent conversations
+### 1. Project-Based Organization
 
-## Prerequisites
+- **Multiple projects tracked**: Monitor 3+ projects in one Telegram chat
+- **Project tags**: Automatic `[Project Name]` prefix on all notifications
+- **Auto-discovery**: Projects registered via `directory` hook parameter
 
-- Node.js 18+ or Bun 1.3+
-- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
-- OpenCode installation (local or self-hosted)
+### 2. Message Routing
+
+- **With project prefix**: `[proj-name] your message` → routes to specific project
+- **Without prefix**: Uses last active project
+- **New sessions**: `/new [project-name]` creates fresh session
+
+### 3. Real-Time Updates
+
+- **Streaming output**: See agent thinking, tool calls, file edits as they happen
+- **Completion summaries**: Final reports with actions, files, test results
+- **Error handling**: Immediate notification of failures
+
+### 4. Session Management
+
+- **Automatic activation**: Each project maintains "last active" session
+- **Multi-project control**: `/status` shows all active projects
+- **Cancellation**: `/cancel [project-name]` stops specific project
 
 ## Installation
 
-### Option 1: As OpenCode Plugin
+### Setup
 
 ```bash
-# Clone this repository
-git clone https://github.com/your-org/opencode_telegram_hook.git
-
+git clone https://github.com/kjm1559/opencode_telegram_hook.git
 cd opencode_telegram_hook
 bun install
-
-# Build the plugin
 bun run build
-
-# Register with OpenCode (if using plugin system)
-opencode plugin add ./dist/opencode-telegram-plugin.js
 ```
 
-### Option 2: Standalone Integration
-
-```bash
-bun install
-bun run dev
-```
-
-## Configuration
-
-Set environment variables:
+### Environment Configuration
 
 ```bash
 # Required
-TELEGRAM_BOT_TOKEN=your-bot-token-here
-
-# OpenCode connection
-OPENCODE_HOST=localhost          # Default: localhost
-OPENCODE_PORT=8082               # Default: 8082
-OPENCODE_WS_PORT=8083            # WebSocket port for ACP
+export TELEGRAM_BOT_TOKEN="your-bot-token-here"
 
 # Optional
-TELEGRAM_USERIDS="123456789,987654321"  # Allowed user IDs (comma-separated)
-NOTIFICATION_LEVEL=all           # all, summary-only, errors-only
-SUMMARY_INCLUDE_FILE_LIST=true   # Include modified files in summaries
-SUMMARY_INCLUDE_TEST_RESULTS=true  # Include test output
+export TELEGRAM_USERIDS="123456789,987654321"  # Allowed user IDs
+export NOTIFICATION_LEVEL="all"  # all, summary-only, errors-only
+```
+
+### Register with OpenCode
+
+Add to your `opencode.json`:
+
+```json
+{
+  "plugins": ["file:///path/to/opencode_telegram_hook/dist/index.js"]
+}
 ```
 
 ## Usage
 
 ### Sending Work Requests
 
-Type your task in Telegram:
-
+**To specific project:**
 ```
-Add a new feature to authenticate users with JWT tokens
-```
-
-The plugin will:
-
-1. **Forward** your message to OpenCode's active session
-2. **Stream** agent output (thinking, tool calls, results) in real-time
-3. **Summarize** work completion with:
-   - Actions taken
-   - Files modified
-   - Test/build status
-   - Final confirmation
-
-### Supported Commands
-
-```
-/start       Initialize session
-/help        Show available commands
-/human       Request human confirmation needed
-/cancel      Stop current agent work
-/status      Check current agent status
+[my-project] Add JWT authentication to the API
 ```
 
-### Work Flow Example
+**To last active project:**
+```
+Fix the bug in the login handler
+```
+
+### Commands
 
 ```
-│─ Telegram Chat │
-"Create an API endpoint for user profiles"
+/start                    Link Telegram to last active session
+/help                    Show all commands
+/new [project-name]      Create new session for project
+/status                  Show all active projects & sessions
+/cancel [project-name]   Stop work on specific project
+/projects               List all tracked projects
+```
 
-└────────> OpenCode Agent (via Plugin)
+### Examples
 
-│─ Agent Output Streaming │
-[Agent] Understanding task...
-[Agent] Found existing patterns in src/routes/users.ts
-[Agent] Creating new endpoint handler
-[Agent] Running tests...
-Agent: ✅ Tests passed
+#### Multiple Projects Example
 
-└────────> Telegram Summary
+```
+│ Telegram Chat |
+├─────────────────────────────
+│ [backend-api] Add rate limiter
+│   ↓
+│ [backend-api] 🤖 Understanding rate limiting requirements...
+│ [backend-api] 🔧 Creating src/middleware/rate-limit.ts
+│ [backend-api] ✅ Tests: 4/4 passed
+│
+│ [frontend-app] Update login UI
+│   ↓
+│ [frontend-app] 🤖 Analyzing current login component...
+│ [frontend-app] 🎨 Modifying styles for login form
+│ [frontend-app] ✅ Files Modified: 3
+```
 
-│─ Final Report │
-✅ Work Completed!
+#### Creating New Session
 
-**Actions:**
-- Created src/routes/user-profile.ts
-- Added OpenAPI schema for /api/users/:id
-- Wrote 8 test cases
+```
+/new my-new-feature
+│
+✅ Created new session for "my-new-feature"
+   Session: ses_abc123
+   Directory: /home/project/my-new-feature
+   
+Send your task request.
+```
 
-**Files Modified:**
-- src/routes/user-profile.ts (+45 lines)
-- src/openapi/schema.yaml (+12 lines)
+#### Status Check
 
-**Tests:** 8/8 passed
+```
+/status
+│
+📊 Active Projects:
+  • backend-api (ses_abc12) — Active
+  • frontend-app (ses_def45) — Idle
+  • data-pipeline (ses_ghi78) — Completed
+  
+Total: 3 projects, 2 active sessions
+```
 
-Ready for next task.
+## Implementation Details
+
+### Project Identification
+
+Projects are identified by their **absolute directory path**. The plugin:
+
+1. Maps `project-display-name ↔ directory-path` in config
+2. Tracks `directory-path ↔ active-session-id` per project
+3. Routes messages using project name → directory → session chain
+
+### State Management
+
+```typescript
+// Project configuration
+projectConfig: Map<string, {
+  name: string,
+  directory: string,
+  display_name: string  // For Telegram tags
+}>
+
+// Runtime state
+projectSessions: Map<string, {
+  sessionId: string
+  lastActivity: number
+  telegramChatId: string
+}>
+```
+
+### Event Processing
+
+```
+OpenCode Event (with directory) 
+    ↓
+Find project by directory
+    ↓
+Get project display name
+    ↓
+Format: `[project-name] event-details`
+    ↓
+Send to Telegram
 ```
 
 ## Development
 
 ```bash
-# Start in development mode
+# Start development
 bun run dev
 
 # Run tests
 bun test
 
-# Check types
+# Type check
 bun typecheck
 ```
 
-### Debugging
-
-Enable verbose logging to see ACP events and Telegram message flow:
+### Debug Mode
 
 ```bash
 DEBUG=opencode-telegram bun run dev
 ```
 
-## Key OpenCode Components
-
-When implementing, reference these core files:
-
-| Component | Path | Purpose |
-|-----------|------|---------|
-| ACP Interface | `src/acp/agent-interface.ts` | Agent communication protocol |
-| Session Service | `src/session/session.ts` | Message/session management |
-| Plugin System | `packages/plugin/src/` | Plugin architecture |
-| Agent Types | `src/config/agent.ts` | Agent configuration |
-| Event Bus | `src/ide/bus.ts` | Internal event handling |
-
 ## Testing Strategy
 
-The plugin includes tests for:
+Tests cover:
 
-- Message parsing and relaying
-- ACP event forwarding
-- Work summarization logic
-- Telegram API integration
+- **Message routing**: Project tag parsing and session resolution
+- **State management**: Multiple projects with different session states
+- **Event formatting**: Project prefix applied to all notifications
+- **Session lifecycle**: Create, link, update, cancel sessions
 
 ```bash
-cd tests && bun test telegram-plugin.test.ts
+bun test src/project-routing.test.ts
+```
+
+## API Reference
+
+### MessageRelay Methods
+
+```typescript
+// Forward message to project session
+await relay.forwardToProject({
+  chatId: string,
+  projectName: string,  // or undefined for last active
+  message: string
+})
+
+// Create new session for project
+await relay.createNewSession({
+  chatId: string,
+  directory: string  // Absolute path
+})
+```
+
+### EventHandler Integration
+
+```typescript
+// Automatically adds project prefix
+await eventHandler.handle(event, {
+  directory: event.payload.directory,
+  chatId: string
+})
 ```
 
 ## License
@@ -239,18 +304,17 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 ## Contributing
 
 1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
+2. Create feature branch (`git checkout -b feature/improvement`)
+3. Commit changes (`git commit -m 'Add improvement'`)
+4. Push to branch (`git push origin feature/improvement`)
+5. Open Pull Request
 
 ## Resources
 
 - [OpenCode Documentation](https://opencode.ai/docs)
 - [Telegram Bot API](https://core.telegram.org/bots/api)
-- [OpenCode Plugin Guide](https://opencode.ai/docs/plugins) (if available)
-- [OpenCode ACP Protocol](https://github.com/opencode-ai/agent-client-protocol)
+- [OpenCode Plugin Guide](https://opencode.ai/docs/plugins)
 
 ---
 
-**Note:** This plugin is community-maintained and not officially affiliated with the OpenCode team.
+**Note:** Community-maintained plugin, not officially affiliated with OpenCode team.
