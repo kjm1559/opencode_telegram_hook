@@ -136,10 +136,9 @@ export class WorkSummarizer {
       "",
       "**Actions**:",
       ...sections,
-      "
-**Details**:",
-      `Events tracked: \`${context.eventHistory.length}\`",
       "",
+      "**Details**:",
+      `Events tracked: \`${context.eventHistory.length}\`\n`,
       "Ready for next task. 🎉",
     ].join("\n")
 
