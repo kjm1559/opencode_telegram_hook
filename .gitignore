@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+*.local
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Build output
+dist/
+build/
+*.log
+npm-debug.log*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*~
+
+# Coverage
+coverage/
+.nyc_output/
+
+# Testing
+test-fixtures/
+.fixtures/
+
+# Secrets
+*.key
+*.pem
+token*
+credentials.*
+
+# Bundle artifacts
+*.bundle
+*.min.js

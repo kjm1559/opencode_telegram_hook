@@ -1,0 +1,27 @@
+{
+  "name": "opencode-telegram-plugin",
+  "version": "1.0.0",
+  "description": "OpenCode Telegram integration plugin",
+  "main": "src/index.ts",
+  "type": "module",
+  "scripts": {
+    "test": "bun test",
+    "build": "bun build src/index.ts --outdir dist",
+    "lint": "eslint src/**/*.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/bun": "^1.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "opencode",
+    "telegram",
+    "plugin",
+    "ai",
+    "agent"
+  ],
+  "license": "MIT"
+}
