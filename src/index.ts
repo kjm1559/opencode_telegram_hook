@@ -26,9 +26,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const workSummarizer = new WorkSummarizer()
   const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
 
-  // Cache the latest session ID for events without session_id (like tui.toast.show)
   let latestSessionId: string | null = null
 
+  const projectName = getProjectNameFromDirectory(directory, config)
+  
   const projectContext = new Map<string, {
     projectId: string
     telegramChatIds: Array<string>
@@ -44,10 +45,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
   return {
     event: async ({ event }) => {
-      const eventLog = (msg: string) => console.log(`[${event.type}]`, msg)
+      const eventLog = (msg: string) => console.log(`[💬 ${projectName}] [${event.type}]`, msg)
       
       if (event.type === "session.started") {
-        const newSessionId = event.session_id || event.sessionId || event.properties?.session_id
+        const newSessionId = event.session_id || event.sessionId || event.properties?.session_id || event.payload?.session_id
         if (newSessionId) {
           latestSessionId = String(newSessionId)
           eventLog(`✓ Cached session: ${latestSessionId}`)
@@ -60,7 +61,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         }
       }
 
-      const sessionId = event.session_id || event.sessionId || event.properties?.session_id || latestSessionId
+      const sessionId = event.session_id || event.sessionId || 
+                       event.properties?.session_id || 
+                       event.payload?.session_id ||
+                       latestSessionId
 
       if (!sessionId) {
         eventLog(`✗ No session_id (type=${event.type})`)
@@ -153,7 +157,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         if (defaultChatIds.length > 0) {
           await telegramClient.sendMessage({
             chat_id: defaultChatIds[0],
-            text: "🔧 Telegram Plugin Loaded\n\nPlugin is now active and ready to receive events from OpenCode.",
+            text: `🔧 *Telegram Plugin Loaded*\n\n📂 *Project:* ${projectName}\n📁 *Directory:* \`${directory}\`\n\nPlugin is now active and ready to receive events from OpenCode.`,
             parse_mode: "MarkdownV2"
           })
         }
