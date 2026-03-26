@@ -47,16 +47,6 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     event: async ({ event }) => {
       const eventLog = (msg: string) => console.log(`[💬 ${projectName}] [${event.type}]`, msg)
       
-      // Debug: Log event structure for first session event
-      if (event.type.includes("session") && Date.now() % 1000 < 100) {
-        console.log(`\n[${event.type}] FULL EVENT DUMP:`)
-        console.log(`  event.type:`, event.type)
-        console.log(`  event.properties:`, event.properties)
-        console.log(`  event.properties?.sessionID:`, event.properties?.sessionID)
-        console.log(`  event.properties?.info?:`, event.properties?.info)
-        console.log(`  event.properties?.info?.id:`, event.properties?.info?.id)
-      }
-      
       // Extract session_id based on OpenCode event structure
       const getSessionId = (e: any): string | null => {
         if (e.properties?.sessionID) {
@@ -102,11 +92,11 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       eventLog(`✓ Using session: ${sessionId}`)
 
       const projectDir = event.payload?.directory || directory
-      const projectName = getProjectNameFromDirectory(projectDir, config)
+      const eventProjectName = getProjectNameFromDirectory(projectDir, config)
 
       if (!projectContext.has(projectDir)) {
         projectContext.set(projectDir, {
-          projectId: projectName,
+          projectId: eventProjectName,
           telegramChatIds: defaultChatIds,
           eventHistory: [],
           workInProgress: false,
@@ -131,7 +121,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       if (["session.completed", "session.finished"].includes(event.type)) {
         if (context.workInProgress) {
           context.workInProgress = false
-          const summary = workSummarizer.generate(context, projectName)
+          const summary = workSummarizer.generate(context, eventProjectName)
           if (summary) {
             for (const chatId of context.telegramChatIds) {
               await telegramClient.sendMessage({
@@ -144,7 +134,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         }
       }
 
-      await eventHandler.handle(event, projectDir, projectName, context.telegramChatIds, {
+      await eventHandler.handle(event, projectDir, eventProjectName, context.telegramChatIds, {
         telegramClient: telegramClient.sendMessage.bind(telegramClient)
       })
     },
