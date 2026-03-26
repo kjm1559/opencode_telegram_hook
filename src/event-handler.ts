@@ -61,6 +61,8 @@ export class EventHandler {
             "command.executed",
             "lsp.client.diagnostics",
             "session.started",
+            "session.status",
+            "session.diff",
             "session.updated",
             "session.completed",
             "session.finished",
@@ -136,9 +138,23 @@ export class EventHandler {
         return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
     }
 
+    if (event.type === "session.status") {
+        const statusType = event.properties?.status?.type || "unknown"
+        const statusIcon = statusType === "busy" ? "🔄" : "⏸️"
+        return `[${projectName}] ${statusIcon} Session status: \`${statusType}\`\n\n---\n`
+    }
+
+    if (event.type === "session.diff") {
+        const diffList = event.properties?.diff || []
+        const fileCount = Array.isArray(diffList) ? diffList.length : 0
+        const changes = diffList.map((d: any) => 
+            `• \`${d.file}\` → ${d.status || "modified"}`
+        ).slice(0, 5).join("\n")
+        return `[${projectName}] 📝 Session diff: \`${fileCount}\` files changed\n\n${changes}\n\n---\n`
+    }
+
     if (event.type === "session.updated") {
-        console.log("[SESSION.UPDATED] Full event:", JSON.stringify(event, null, 2))
-        const status = event.payload?.status?.value || event.properties?.status?.value || "updated"
+        const status = event.payload?.status?.value || event.properties?.status || "updated"
         const request = event.payload?.request?.content || event.payload?.request || event.message
         const prompt = event.payload?.prompt || event.properties?.prompt
         const diff = event.payload?.diff || event.properties?.diff

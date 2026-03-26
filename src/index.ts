@@ -47,20 +47,27 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     event: async ({ event }) => {
       const eventLog = (msg: string) => console.log(`[💬 ${projectName}] [${event.type}]`, msg)
       
+      // Debug: Log event structure for first session event
+      if (event.type.includes("session") && Date.now() % 1000 < 100) {
+        console.log(`\n[${event.type}] FULL EVENT DUMP:`)
+        console.log(`  event.type:`, event.type)
+        console.log(`  event.properties:`, event.properties)
+        console.log(`  event.properties?.sessionID:`, event.properties?.sessionID)
+        console.log(`  event.properties?.info?:`, event.properties?.info)
+        console.log(`  event.properties?.info?.id:`, event.properties?.info?.id)
+      }
+      
       // Extract session_id based on OpenCode event structure
       const getSessionId = (e: any): string | null => {
-        // Try standard locations first (sessionID in properties)
         if (e.properties?.sessionID) {
           return String(e.properties.sessionID)
         }
         if (e.properties?.id) {
           return String(e.properties.id)
         }
-        // For session.started/updated events with info object
         if (e.properties?.info?.id) {
           return String(e.properties.info.id)
         }
-        // Direct event properties (fallback)
         if (e.sessionID) {
           return String(e.sessionID)
         }
