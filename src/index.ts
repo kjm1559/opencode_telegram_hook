@@ -47,24 +47,45 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     event: async ({ event }) => {
       const eventLog = (msg: string) => console.log(`[💬 ${projectName}] [${event.type}]`, msg)
       
+      // Extract session_id based on OpenCode event structure
+      const getSessionId = (e: any): string | null => {
+        // Try standard locations first (sessionID in properties)
+        if (e.properties?.sessionID) {
+          return String(e.properties.sessionID)
+        }
+        if (e.properties?.id) {
+          return String(e.properties.id)
+        }
+        // For session.started/updated events with info object
+        if (e.properties?.info?.id) {
+          return String(e.properties.info.id)
+        }
+        // Direct event properties (fallback)
+        if (e.sessionID) {
+          return String(e.sessionID)
+        }
+        return null
+      }
+      
+      const extractedSessionId = getSessionId(event)
+      
       if (event.type === "session.started") {
-        const newSessionId = event.session_id || event.sessionId || event.properties?.session_id || event.payload?.session_id
-        if (newSessionId) {
-          latestSessionId = String(newSessionId)
+        if (extractedSessionId) {
+          latestSessionId = extractedSessionId
           eventLog(`✓ Cached session: ${latestSessionId}`)
+        } else {
+          eventLog(`✗ FAILED TO CACHE: session.started but no session_id found!`)
+          console.log(`  session.started properties:`, event.properties)
         }
       } else if (["session.completed", "session.finished", "session.idle"].includes(event.type)) {
-        const completedSessionId = event.session_id || event.sessionId
-        if (completedSessionId && latestSessionId === String(completedSessionId)) {
+        const completedSessionId = getSessionId(event)
+        if (completedSessionId && latestSessionId === completedSessionId) {
           latestSessionId = null
           eventLog(`✓ Cleared session cache`)
         }
       }
 
-      const sessionId = event.session_id || event.sessionId || 
-                       event.properties?.session_id || 
-                       event.payload?.session_id ||
-                       latestSessionId
+      const sessionId = extractedSessionId || latestSessionId
 
       if (!sessionId) {
         eventLog(`✗ No session_id (type=${event.type})`)

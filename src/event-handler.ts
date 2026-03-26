@@ -137,18 +137,25 @@ export class EventHandler {
     }
 
     if (event.type === "session.updated") {
+        console.log("[SESSION.UPDATED] Full event:", JSON.stringify(event, null, 2))
         const status = event.payload?.status?.value || event.properties?.status?.value || "updated"
-        const message = event.payload?.message || event.title || "Session updated"
-        const diff = event.payload?.diff
+        const request = event.payload?.request?.content || event.payload?.request || event.message
+        const prompt = event.payload?.prompt || event.properties?.prompt
+        const diff = event.payload?.diff || event.properties?.diff
         
         const lines = [
             `[${projectName}] 🔄 Session updated`,
-            `Status: \`${status}\``,
-            `Message: *${message}*`
+            `Status: \`${status}\``
         ]
         
+        if (request) {
+            lines.push(`\n📝 \`User Request:\` *${request.substring(0, 200)}*`)
+        }
+        if (prompt) {
+            lines.push(`\n💡 \`Prompt:\` *${prompt.substring(0, 200)}*`)
+        }
         if (diff) {
-            lines.push(`\nChanges: ${JSON.stringify(diff, null, 2).substring(0, 256)}`)
+            lines.push(`\n⚡ \`Changes:\` \`${JSON.stringify(diff, null, 2).substring(0, 256)}\``)
         }
         
         lines.push("\n\n---\n")
