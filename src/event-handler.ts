@@ -61,7 +61,9 @@ export class EventHandler {
             "command.executed",
             "lsp.client.diagnostics",
             "session.started",
+            "session.updated",
             "session.completed",
+            "session.finished",
         ]
         const result = shouldTrackEvents.some((pattern) => 
             lowerEventType.includes(pattern.toLowerCase())
@@ -132,6 +134,25 @@ export class EventHandler {
             ? event.payload.worktree 
             : "default"
         return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
+    }
+
+    if (event.type === "session.updated") {
+        const status = event.payload?.status?.value || event.properties?.status?.value || "updated"
+        const message = event.payload?.message || event.title || "Session updated"
+        const diff = event.payload?.diff
+        
+        const lines = [
+            `[${projectName}] 🔄 Session updated`,
+            `Status: \`${status}\``,
+            `Message: *${message}*`
+        ]
+        
+        if (diff) {
+            lines.push(`\nChanges: ${JSON.stringify(diff, null, 2).substring(0, 256)}`)
+        }
+        
+        lines.push("\n\n---\n")
+        return lines.join("\n")
     }
 
     if (event.type === "session.completed") {
