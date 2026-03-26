@@ -17,7 +17,7 @@ export class EventHandler {
     this.config = config
   }
 
-  async handle(
+    async handle(
     event: any,
     projectDir: string,
     projectName: string,
@@ -25,11 +25,15 @@ export class EventHandler {
     deps: {
       telegramClient: TelegramSendFn
     },
-  ) {
+    ) {
+    console.log("[EventHandler] ======== EVENT RECEIVED ========")
     console.log("[EventHandler] Received event:", event.type)
-    console.log("  Project:", projectName)
-    console.log("  Chat IDs received:", chatIds)
-    console.log("  Chat IDs count:", chatIds.length)
+    console.log("[EventHandler] Event title:", event.title)
+    console.log("[EventHandler] Project:", projectName)
+    console.log("[EventHandler] Chat IDs received:", chatIds)
+    console.log("[EventHandler] Chat IDs count:", chatIds.length)
+    console.log("[EventHandler] Session ID:", event.session_id || event.sessionId || event.properties?.session_id)
+    console.log("[EventHandler] Event payload keys:", Object.keys(event.payload || {}))
 
     if (chatIds.length === 0) {
       console.log("  [EventHandler] SKIPPING: No chat IDs available")
@@ -47,20 +51,24 @@ export class EventHandler {
     }
   }
 
-  private shouldNotify(eventType: string): boolean {
-    const shouldTrackEvents = [
-      "message.created",
-      "message.part.updated",
-      "tool.execute.before",
-      "tool.execute.after",
-      "command.executed",
-      "lsp.client.diagnostics",
-      "session.started",
-      "session.completed",
-    ]
-
-    return shouldTrackEvents.some((pattern) => eventType.includes(pattern))
-  }
+    private shouldNotify(eventType: string): boolean {
+        const lowerEventType = eventType.toLowerCase()
+        const shouldTrackEvents = [
+            "message.created",
+            "message.part.updated",
+            "tool.execute.before",
+            "tool.execute.after",
+            "command.executed",
+            "lsp.client.diagnostics",
+            "session.started",
+            "session.completed",
+        ]
+        const result = shouldTrackEvents.some((pattern) => 
+            lowerEventType.includes(pattern.toLowerCase())
+        )
+        console.log(`[TelegramPlugin] shouldNotify check: "${eventType}" -> ${result}`)
+        return result
+    }
 
   private formatEvent(event: any, projectDir: string, projectName: string): string | null {
     if (event.type === "message.created" || event.type === "message.part.updated") {
@@ -73,18 +81,19 @@ export class EventHandler {
     }
 
     if (event.type === "tool.execute.after") {
-      const success = event.output?.output?.includes("success") || !event.output?.error
-      const icon = success ? "✅" : "⚠️"
-      const title = event.output?.title || "Tool executed"
+        const success = (event.output?.output && typeof event.output.output === 'string' && event.output.output.includes("success")) 
+            || !event.output?.error
+        const icon = success ? "✅" : "⚠️"
+        const title = event.output?.title || "Tool executed"
 
-      const lines = [`[${projectName}] \`${icon} ${title}\``]
+        const lines = [`[${projectName}] \`${icon} ${title}\``]
 
-      if (event.output?.output?.substring) {
-        lines.push(event.output.output.substring(0, 256))
-      }
+        if (event.output?.output?.substring && typeof event.output.output === 'string') {
+            lines.push(event.output.output.substring(0, 256))
+        }
 
-      lines.push("\n---\n")
-      return lines.join("\n\n")
+        lines.push("\n---\n")
+        return lines.join("\n\n")
     }
 
     if (event.type === "command.executed") {
@@ -116,8 +125,13 @@ export class EventHandler {
     }
 
     if (event.type === "session.started") {
-      const dir = event.payload?.directory || projectDir
-      return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${event.payload?.worktree?.substring(0, 30) || "default"}...\`\n\n---\n`
+        const dir = typeof event.payload?.directory === 'string' 
+            ? event.payload.directory 
+            : projectDir
+        const worktree = typeof event.payload?.worktree === 'string' 
+            ? event.payload.worktree 
+            : "default"
+        return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
     }
 
     if (event.type === "session.completed") {
