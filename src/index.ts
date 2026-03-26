@@ -49,17 +49,25 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       
       // Extract session_id based on OpenCode event structure
       const getSessionId = (e: any): string | null => {
+        // Priority 1: session.id (session.started/updated/updated events)
+        if (e.info?.id) {
+          return String(e.info.id)
+        }
+        // Priority 2: e.sessionID (session.diff, session.status)
+        if (e.sessionID) {
+          return String(e.sessionID)
+        }
+        // Priority 3: properties.sessionID
         if (e.properties?.sessionID) {
           return String(e.properties.sessionID)
         }
+        // Priority 4: properties.id
         if (e.properties?.id) {
           return String(e.properties.id)
         }
+        // Priority 5: properties.info.id
         if (e.properties?.info?.id) {
           return String(e.properties.info.id)
-        }
-        if (e.sessionID) {
-          return String(e.sessionID)
         }
         return null
       }
