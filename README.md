@@ -10,6 +10,8 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 - **Last active session**: Each project connects to its most recent session
 - **Dynamic project tags**: Every notification shows project origin
 - **New session creation**: Start fresh sessions per project
+- **Enhanced event tracking**: Real-time updates with improved session ID extraction
+- **Startup notification**: Telegram message on plugin initialization
 
 ## Architecture
 
@@ -74,12 +76,15 @@ User Input              Plugin Processing              OpenCode Output
 - **Project tags**: Automatic `[Project Name]` prefix on all notifications
 - **Auto-discovery**: Projects registered via `directory` hook parameter
 
-### 5. Event Tracking (WIP)
+### 2. Event Tracking (Enhanced)
 
 - **Real-time agent work updates**: See every action as it happens
 - **Tool usage monitoring**: Track `edit`, `write`, `bash`, test execution
 - **Session lifecycle**: Start, progress, completion notifications
 - **Completion summaries**: Final reports with actions, files, test results
+- **Robust session ID extraction**: Enhanced detection across event types (message, tool, command, session)
+- **Event filtering**: Configurable tracking with case-insensitive event type matching
+- **Debug logging**: Comprehensive logging for troubleshooting
 
 ### 2. Message Routing
 
@@ -315,6 +320,20 @@ await eventHandler.handle(event, {
   chatId: string
 })
 ```
+
+## Recent Changes
+
+### v1.0.2 - Event Tracking Improvements
+
+- **Fixed fs compatibility**: Dynamic import for bundling compatibility across environments
+- **Enhanced session ID extraction**: Robust detection across multiple event types:
+  - Message events (message.created, message.part.updated, etc.)
+  - Tool execution events (tool.execute.before, tool.execute.after)
+  - Command events (command.executed)
+  - Session lifecycle events (session.started, session.completed, etc.)
+- **Improved error handling**: Better validation and null checks for event properties
+- **Startup notification**: Telegram message sent when plugin loads successfully
+- **Debug logging**: Comprehensive console output for troubleshooting
 
 ## License
 
