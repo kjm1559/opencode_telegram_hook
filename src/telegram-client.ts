@@ -167,9 +167,10 @@ export class TelegramClient {
     }
 
     try {
-      const offset = this.lastUpdateId + 1
+      // Don't use offset on 409 conflict - let Telegram determine the correct offset
+      const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const response = await fetch(
-        `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`,
+        `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`,
         {
           method: "GET",
         },
@@ -191,7 +192,8 @@ export class TelegramClient {
           }
           
           this.last409Time = now
-          this.lastUpdateId = 0
+          // Don't reset lastUpdateId - let Telegram determine correct offset
+          // Just clear it so next call won't include offset parameter
           
           if (this.consecutive409Count > this.MAX_CONFLICT_RETRIES) {
             console.warn(
