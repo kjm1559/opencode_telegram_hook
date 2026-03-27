@@ -32,15 +32,30 @@ export class TelegramClient {
   }
 
   escapeMarkdownV2(text: string): string {
-    // Telegram MarkdownV2 requires escaping these characters with backslash
-    // Process backslash FIRST to avoid double-escaping
-    let result = text.replace(/\\/g, '\\\\')
+    let result = text
     
-    // Then escape all other special characters
-    const specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    for (const char of specialChars) {
-      result = result.replace(new RegExp(char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '\\' + char)
-    }
+    // Escape backslash FIRST
+    result = result.replace(/\\/g, '\\\\')
+    
+    // Escape all other special characters
+    result = result.replace(/\_/g, '\\_')
+    result = result.replace(/\*/g, '\\*')
+    result = result.replace(/\[/g, '\\[')
+    result = result.replace(/\]/g, '\\]')
+    result = result.replace(/\(/g, '\\(')
+    result = result.replace(/\)/g, '\\)')
+    result = result.replace(/~/g, '\\~')
+    result = result.replace(/`/g, '\\`')
+    result = result.replace(/>/g, '\\>')
+    result = result.replace(/#/g, '\\#')
+    result = result.replace(/\+/g, '\\+')
+    result = result.replace(/-/g, '\\-')
+    result = result.replace(/=/g, '\\=')
+    result = result.replace(/\|/g, '\\|')
+    result = result.replace(/\{/g, '\\{')
+    result = result.replace(/\}/g, '\\}')
+    result = result.replace(/\./g, '\\.')
+    result = result.replace(/!/g, '\\!')
     
     return result
   }
