@@ -37,9 +37,7 @@ export class TelegramClient {
     // Escape backslash FIRST
     result = result.replace(/\\/g, '\\\\')
     
-    // Escape all other special characters
-    result = result.replace(/\_/g, '\\_')
-    result = result.replace(/\*/g, '\\*')
+    // Escape special characters EXCEPT * and _ (used for markdown formatting)
     result = result.replace(/\[/g, '\\[')
     result = result.replace(/\]/g, '\\]')
     result = result.replace(/\(/g, '\\(')

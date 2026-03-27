@@ -181,10 +181,10 @@ export class EventHandler {
         ]
         
         if (request) {
-            lines.push(`\n📝 \`User Request:\` *${this.escapeMarkdownV2(request.substring(0, 200))}*`)
+            lines.push(`\n📝 \`User Request:\` ${this.escapeMarkdownV2(request.substring(0, 200))}`)
         }
         if (prompt) {
-            lines.push(`\n💡 \`Prompt:\` *${this.escapeMarkdownV2(prompt.substring(0, 200))}*`)
+            lines.push(`\n💡 \`Prompt:\` ${this.escapeMarkdownV2(prompt.substring(0, 200))}`)
         }
         if (diff) {
             lines.push(`\n⚡ \`Changes:\` \`${this.escapeMarkdownV2(JSON.stringify(diff, null, 2).substring(0, 256))}\``)
@@ -352,9 +352,7 @@ export class EventHandler {
     // Escape backslash FIRST
     result = result.replace(/\\/g, '\\\\')
     
-    // Escape all other special characters
-    result = result.replace(/\_/g, '\\_')
-    result = result.replace(/\*/g, '\\*')
+    // Escape special characters EXCEPT * and _ (used for markdown formatting)
     result = result.replace(/\[/g, '\\[')
     result = result.replace(/\]/g, '\\]')
     result = result.replace(/\(/g, '\\(')
