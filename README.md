@@ -98,6 +98,12 @@ User Input              Plugin Processing              OpenCode Output
 - **Completion summaries**: Final reports with actions, files, test results
 - **Error handling**: Immediate notification of failures
 
+**Formatting**: Messages use Telegram MarkdownV2 for rich text formatting:
+- Code snippets displayed with proper inline code formatting
+- Bold/italic text for emphasis
+- Proper escaping of special characters in dynamic content
+- Emojis and icons for visual clarity
+
 ### 4. Session Management
 
 - **Automatic activation**: Each project maintains "last active" session
