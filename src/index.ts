@@ -281,22 +281,61 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
             if (update.message) {
               const parsed = telegramClient.parseMessage(update.message.text)
               if (parsed.type === "message") {
-                // Use the stored handler references
-                const fakeInput = {
-                  client,
-                  directory,
-                  worktree
-                }
+                const sessionId = latestSessionId
+                const messageContent = parsed.message
                 
-                const fakeMessage = {
-                  sessionID: latestSessionId, // Use the last known session ID
-                  content: parsed.message
-                }
-                
-                // Process as a chat.message event using the stored handler
-                await handlers.eventHandler.handle(fakeMessage, directory, projectName, defaultChatIds, {
-                  telegramClient: handlers.telegramClient.sendMessage.bind(handlers.telegramClient)
+                console.log("[TelegramPoll] Message received:", {
+                  sessionId,
+                  messageContent: messageContent.substring(0, 50) + (messageContent.length > 50 ? "..." : "")
                 })
+                
+                // Find the project context for this session
+                for (const [dir, ctx] of projectContext.entries()) {
+                  if (ctx.lastSessionId === sessionId && ctx.telegramChatIds.length > 0) {
+                    const projName = getProjectNameFromDirectory(dir, config)
+                    console.log(`[TelegramPoll] Found matching project: ${projName}`)
+                    
+                    try {
+                      // Send the user's message to the OpenCode session
+                      await client.session.prompt({
+                        path: { id: sessionId },
+                        body: {
+                          parts: [{ type: "text", text: messageContent }],
+                        },
+                      })
+                      
+                      // Send confirmation back to Telegram
+                      for (const chatId of ctx.telegramChatIds) {
+                        await telegramClient.sendMessage({
+                          chat_id: chatId,
+                          text: `[${projName}] 📩 Message sent to OpenCode session`,
+                          parse_mode: "MarkdownV2"
+                        })
+                      }
+                    } catch (error) {
+                      console.error("[TelegramPoll] Error sending message to OpenCode:", error)
+                      for (const chatId of ctx.telegramChatIds) {
+                        await telegramClient.sendMessage({
+                          chat_id: chatId,
+                          text: `[${projName}] ❌ Failed to send message: ${error.message}`,
+                          parse_mode: "MarkdownV2"
+                        })
+                      }
+                    }
+                    break
+                  }
+                }
+                
+                if (!sessionId) {
+                  console.log("[TelegramPoll] No active session found")
+                  for (const chatId of defaultChatIds) {
+                    await telegramClient.sendMessage({
+                      chat_id: chatId,
+                      text: `❌ No active session. Use /status to check active projects.`,
+                      parse_mode: "MarkdownV2"
+                    })
+                  }
+                }
               }
             }
           }
