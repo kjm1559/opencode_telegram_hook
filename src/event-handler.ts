@@ -341,13 +341,28 @@ export class EventHandler {
   }
 
   private escapeMarkdownV2(text: string): string {
-    const charsToEscape = ['_', '*', '[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
     let result = text
     
-    for (const char of charsToEscape) {
-      const regex = new RegExp(`\\${char}`, 'g')
-      result = result.replace(regex, `\\${char}`)
-    }
+    // MUST escape backslash FIRST to avoid double-escaping
+    result = result.replace(/\\/g, '\\\\')
+    result = result.replace(/_/g, '\\_')
+    result = result.replace(/\*/g, '\\*')
+    result = result.replace(/\[/g, '\\[')
+    result = result.replace(/\]/g, '\\]')
+    result = result.replace(/\(/g, '\\(')
+    result = result.replace(/\)/g, '\\)')
+    result = result.replace(/~/g, '\\~')
+    result = result.replace(/`/g, '\\`')
+    result = result.replace(/>/g, '\\>')
+    result = result.replace(/#/g, '\\#')
+    result = result.replace(/\+/g, '\\+')
+    result = result.replace(/-/g, '\\-')
+    result = result.replace(/=/g, '\\=')
+    result = result.replace(/\|/g, '\\|')
+    result = result.replace(/\{/g, '\\{')
+    result = result.replace(/\}/g, '\\}')
+    result = result.replace(/\./g, '\\.')
+    result = result.replace(/!/g, '\\!')
     
     return result
   }
