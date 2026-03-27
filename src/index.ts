@@ -9,6 +9,20 @@ import {
   type Config,
 } from "./config"
 
+// Global polling state - shared across all plugin instances
+let globalPollingStarted = false
+let globalPollingInterval: NodeJS.Timeout | null = null
+const globalProjectRegistry = new Map<string, {
+  projectName: string
+  directory: string
+  telegramClient: TelegramClient
+  config: Config
+  input: PluginInput
+  chatIds: string[]
+  latestSessionId: string | null
+  projectContext: Map<string, any>
+}>()
+
 export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const { client, directory, worktree } = input
 
@@ -263,8 +277,11 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     },
 
     config: async () => {
-      try {
-        if (defaultChatIds.length > 0) {
+      const projectKey = directory
+      
+      // Send startup message only for first project
+      if (!globalPollingStarted && defaultChatIds.length > 0) {
+        try {
           const startupText = `🔧 Telegram Plugin Loaded
 
 📂 Project: ${projectName}
@@ -278,76 +295,31 @@ Plugin is now active and ready to receive events from OpenCode.`
             parse_mode: "MarkdownV2"
           })
           console.log("[Telegram] Startup message sent successfully")
+        } catch (e) {
+          console.error("Failed to send startup message:", e)
         }
-      } catch (e) {
-        console.error("Failed to send startup message:", e)
       }
       
-      // Start polling for incoming Telegram messages
-      setInterval(async () => {
-        try {
-          const updates = await telegramClient.getUpdates()
-          for (const update of updates) {
-            if (update.message) {
-              const parsed = telegramClient.parseMessage(update.message.text)
-              if (parsed.type === "message") {
-                const sessionId = latestSessionId
-                const messageContent = parsed.message
-                
-                console.log("[TelegramPoll] Message received:", {
-                  sessionId,
-                  messageContent: messageContent.substring(0, 50) + (messageContent.length > 50 ? "..." : "")
-                })
-                
-                // Find the project context for this session
-                for (const [dir, ctx] of projectContext.entries()) {
-                  if (ctx.lastSessionId === sessionId && ctx.telegramChatIds.length > 0) {
-                    const projName = getProjectNameFromDirectory(dir, config)
-                    console.log(`[TelegramPoll] Found matching project: ${projName}`)
-                    
-                    try {
-                      // Send the user's message to the OpenCode session
-                      await client.session.prompt({
-                        path: { id: sessionId },
-                        body: {
-                          parts: [{ type: "text", text: messageContent }],
-                        },
-                      })
-                      
-                      // Send confirmation back to Telegram
-                      for (const chatId of ctx.telegramChatIds) {
-                        const escapedText = `[${telegramClient.escapeMarkdownV2(projName)}] 📩 Message sent to OpenCode session`
-                        await telegramClient.sendMessage({
-                          chat_id: chatId,
-                          text: escapedText,
-                          parse_mode: "MarkdownV2"
-                        })
-                      }
-                    } catch (error) {
-                      console.error("[TelegramPoll] Error sending message to OpenCode:", error)
-                      for (const chatId of ctx.telegramChatIds) {
-                        const escapedError = `[${telegramClient.escapeMarkdownV2(projName)}] ❌ Failed to send message: ${telegramClient.escapeMarkdownV2(error.message)}`
-                        await telegramClient.sendMessage({
-                          chat_id: chatId,
-                          text: escapedError,
-                          parse_mode: "MarkdownV2"
-                        })
-                      }
-                    }
-                    break
-                  }
-                }
-                
-                if (!sessionId) {
-                  console.log("[TelegramPoll] No active session found")
-                }
-              }
-            }
-          }
-        } catch (error) {
-          console.error("[TelegramPlugin] Error polling Telegram:", error)
+      // Register this project globally
+      if (!globalProjectRegistry.has(projectKey)) {
+        globalProjectRegistry.set(projectKey, {
+          projectName,
+          directory,
+          telegramClient,
+          config,
+          input,
+          chatIds: defaultChatIds,
+          latestSessionId: null,
+          projectContext: new Map()
+        })
+        
+        // Start global polling if not already started
+        if (!globalPollingStarted) {
+          globalPollingStarted = true
+          globalPollingInterval = setInterval(globalPollingLoop, 1000)
+          console.log("[Telegram] Global polling started (1s interval)")
         }
-      }, 1000) // Poll every second
+      }
       
       console.log("\n===== [TelegramPlugin] Initialized ====")
       console.log("  Directory:", directory)
@@ -355,9 +327,76 @@ Plugin is now active and ready to receive events from OpenCode.`
       console.log("  Projects:", config.projects?.length || 0)
       console.log("  Chat IDs:", defaultChatIds)
       console.log("  TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID || "NOT SET")
-      console.log("  Polling Telegram for messages: Enabled (1s interval)")
+      console.log("  Polling: Using global polling loop")
       console.log("=================================\n")
     }
+  }
+}
+
+// Global polling function - single instance for all projects
+async function globalPollingLoop() {
+  if (globalProjectRegistry.size === 0) return
+  
+  // Use the first registered telegram client for polling
+  const firstProject = globalProjectRegistry.values().next().value
+  if (!firstProject) return
+  
+  try {
+    const updates = await firstProject.telegramClient.getUpdates()
+    
+    for (const update of updates) {
+      if (update.message) {
+        const parsed = firstProject.telegramClient.parseMessage(update.message.text)
+        
+        if (parsed.type === "message") {
+          console.log("[TelegramPoll] Message received:", {
+            messageContent: parsed.message.substring(0, 50) + (parsed.message.length > 50 ? "..." : "")
+          })
+          
+          // Broadcast to all registered projects
+          for (const [projectKey, project] of globalProjectRegistry.entries()) {
+            const sessionId = project.latestSessionId
+            
+            if (!sessionId) {
+              console.log(`[TelegramPoll] No active session for ${project.projectName}`)
+              continue
+            }
+            
+            try {
+              // Send message to OpenCode session
+              await project.input.client.session.prompt({
+                path: { id: sessionId },
+                body: {
+                  parts: [{ type: "text", text: parsed.message }],
+                },
+              })
+              
+              // Send confirmation back to Telegram
+              for (const chatId of project.chatIds) {
+                const escapedText = `[${project.telegramClient.escapeMarkdownV2(project.projectName)}] 📩 Message sent to OpenCode session`
+                await project.telegramClient.sendMessage({
+                  chat_id: chatId,
+                  text: escapedText,
+                  parse_mode: "MarkdownV2"
+                })
+              }
+            } catch (error) {
+              console.error(`[TelegramPoll] Error sending message to ${project.projectName}:`, error)
+              for (const chatId of project.chatIds) {
+                const escapedError = `[${project.telegramClient.escapeMarkdownV2(project.projectName)}] ❌ Failed: ${project.telegramClient.escapeMarkdownV2(error.message)}`
+                await project.telegramClient.sendMessage({
+                  chat_id: chatId,
+                  text: escapedError,
+                  parse_mode: "MarkdownV2"
+                })
+              }
+            }
+          }
+        }
+      }
+    }
+  } catch (error) {
+    console.error("[TelegramPoll] Error in global polling:", error)
   }
 }
 
