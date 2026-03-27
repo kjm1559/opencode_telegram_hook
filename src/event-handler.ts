@@ -17,7 +17,7 @@ export class EventHandler {
     this.config = config
   }
 
-    async handle(
+  async handle(
     event: any,
     projectDir: string,
     projectName: string,
@@ -25,7 +25,7 @@ export class EventHandler {
     deps: {
       telegramClient: TelegramSendFn
     },
-    ) {
+  ) {
     console.log("[EventHandler] ======== EVENT RECEIVED ========")
     console.log("[EventHandler] Received event:", event.type)
     console.log("[EventHandler] Event title:", event.title)
@@ -34,6 +34,12 @@ export class EventHandler {
     console.log("[EventHandler] Chat IDs count:", chatIds.length)
     console.log("[EventHandler] Session ID:", event.session_id || event.sessionId || event.properties?.session_id)
     console.log("[EventHandler] Event payload keys:", Object.keys(event.payload || {}))
+
+    if (!event.type || typeof event.type !== 'string') {
+      console.log("[EventHandler] SKIPPING: Invalid or missing event.type")
+      console.log("[EventHandler] Event structure:", JSON.stringify(event, null, 2))
+      return
+    }
 
     if (chatIds.length === 0) {
       console.log("  [EventHandler] SKIPPING: No chat IDs available")
@@ -51,28 +57,33 @@ export class EventHandler {
     }
   }
 
-    private shouldNotify(eventType: string): boolean {
-        const lowerEventType = eventType.toLowerCase()
-        const shouldTrackEvents = [
-            "message.created",
-            "message.part.updated",
-            "tool.execute.before",
-            "tool.execute.after",
-            "command.executed",
-            "lsp.client.diagnostics",
-            "session.started",
-            "session.status",
-            "session.diff",
-            "session.updated",
-            "session.completed",
-            "session.finished",
-        ]
-        const result = shouldTrackEvents.some((pattern) => 
-            lowerEventType.includes(pattern.toLowerCase())
-        )
-        console.log(`[TelegramPlugin] shouldNotify check: "${eventType}" -> ${result}`)
-        return result
+  private shouldNotify(eventType: string): boolean {
+    if (!eventType || typeof eventType !== 'string') {
+      console.log(`[TelegramPlugin] shouldNotify check: Invalid eventType -> false`)
+      return false
     }
+    
+    const lowerEventType = eventType.toLowerCase()
+    const shouldTrackEvents = [
+      "message.created",
+      "message.part.updated",
+      "tool.execute.before",
+      "tool.execute.after",
+      "command.executed",
+      "lsp.client.diagnostics",
+      "session.started",
+      "session.status",
+      "session.diff",
+      "session.updated",
+      "session.completed",
+      "session.finished",
+    ]
+    const result = shouldTrackEvents.some((pattern) => 
+      lowerEventType.includes(pattern.toLowerCase())
+    )
+    console.log(`[TelegramPlugin] shouldNotify check: "${eventType}" -> ${result}`)
+    return result
+  }
 
   private formatEvent(event: any, projectDir: string, projectName: string): string | null {
     if (event.type === "message.created" || event.type === "message.part.updated") {
