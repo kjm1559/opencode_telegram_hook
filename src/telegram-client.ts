@@ -22,6 +22,8 @@ export class TelegramClient {
   private lastUpdateId: number = 0
   private consecutive409Count: number = 0
   private readonly MAX_CONFLICT_RETRIES: number = 5
+  private last409Time: number = 0
+  private readonly MIN_RETRY_INTERVAL: number = 5000 // 5 seconds between retries after 409
 
   constructor(botToken?: string) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
@@ -176,15 +178,26 @@ export class TelegramClient {
       if (!response.ok) {
         if (response.status === 409) {
           this.consecutive409Count++
-          console.log(
-            `[Telegram] Resetting update offset due to conflict (attempt ${this.consecutive409Count})`
-          )
+          const now = Date.now()
+          const timeSinceLast409 = now - this.last409Time
+          
+          // Check if we need to wait before retrying
+          if (timeSinceLast409 < this.MIN_RETRY_INTERVAL) {
+            const waitTime = this.MIN_RETRY_INTERVAL - timeSinceLast409
+            console.log(
+              `[Telegram] Conflict detected, waiting ${waitTime}ms before retry (attempt ${this.consecutive409Count})`
+            )
+            await new Promise(resolve => setTimeout(resolve, waitTime))
+          }
+          
+          this.last409Time = now
           this.lastUpdateId = 0
           
           if (this.consecutive409Count > this.MAX_CONFLICT_RETRIES) {
             console.warn(
               `[Telegram] WARNING: Persistent 409 conflicts (${this.consecutive409Count} attempts). ` +
-              'Possible causes: multiple bot instances, webhook still active, or stale offset.'
+              'Possible causes: multiple bot instances, webhook still active, or stale offset. ' +
+              'Consider stopping other instances or using different bot tokens.'
             )
             this.consecutive409Count = 0 // Reset counter to avoid spam
           }
@@ -192,12 +205,14 @@ export class TelegramClient {
         }
         // Reset 409 counter on other errors
         this.consecutive409Count = 0
+        this.last409Time = 0
         console.error(`[Telegram] HTTP error: ${response.status}`)
         return []
       }
       
       // Success - reset 409 counter
       this.consecutive409Count = 0
+      this.last409Time = 0
 
       const data = await response.json()
       const updates = data.result || []
