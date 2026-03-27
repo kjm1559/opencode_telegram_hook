@@ -91,39 +91,39 @@ export class EventHandler {
     }
 
     if (event.type === "tool.execute.before") {
-      const toolName = this.escapeMarkdownV2(event.toolName || event.arguments?.tool || "unknown")
-      const escapedProjectName = this.escapeMarkdownV2(projectName)
-      return `[${escapedProjectName}] 🔧 Using tool: \`${toolName}\`\n\n---\n`
+      const toolName = event.toolName || event.arguments?.tool || "unknown"
+      const message = `[${projectName}] 🔧 Using tool: ${toolName}
+
+---
+`
+      return this.escapeMarkdownV2(message)
     }
 
     if (event.type === "tool.execute.after") {
         const success = (event.output?.output && typeof event.output.output === 'string' && event.output.output.includes("success")) 
             || !event.output?.error
         const icon = success ? "✅" : "⚠️"
-        const title = this.escapeMarkdownV2(event.output?.title || "Tool executed")
-        const escapedProjectName = this.escapeMarkdownV2(projectName)
-
-        const lines = [`[${escapedProjectName}] \`${icon} ${title}\``]
+        const title = event.output?.title || "Tool executed"
+        const lines = [`[${projectName}] ${icon} ${title}`]
 
         if (event.output?.output?.substring && typeof event.output.output === 'string') {
-            lines.push(this.escapeMarkdownV2(event.output.output.substring(0, 256)))
+            lines.push(event.output.output.substring(0, 256))
         }
 
         lines.push("\n---\n")
-        return lines.join("\n\n")
+        return this.escapeMarkdownV2(lines.join("\n\n"))
     }
 
     if (event.type === "command.executed") {
-      const cmd = this.escapeMarkdownV2(event.arguments?.command || event.command || "command")
-      const escapedProjectName = this.escapeMarkdownV2(projectName)
-      const lines = [`[${escapedProjectName}] 💻 Command: \`${cmd}\``]
+      const cmd = event.arguments?.command || event.command || "command"
+      const lines = [`[${projectName}] 💻 Command: ${cmd}`]
 
       if (event.output) {
-        lines.push(this.escapeMarkdownV2(event.output.substring(0, 256)))
+        lines.push(event.output.substring(0, 256))
       }
 
       lines.push("\n---\n")
-      return lines.join("\n\n")
+      return this.escapeMarkdownV2(lines.join("\n\n"))
     }
 
     if (event.type === "lsp.client.diagnostics") {
@@ -132,73 +132,98 @@ export class EventHandler {
 
       if (errors === 0 && warnings === 0) return null
 
-      const escapedProjectName = this.escapeMarkdownV2(projectName)
       const lines = [
-        `[${escapedProjectName}] 🐛 LSP Diagnostics:`,
-        `Errors: \`${errors}\``,
-        `Warnings: \`${warnings}\`\n`,
+        `[${projectName}] 🐛 LSP Diagnostics:`,
+        `Errors: ${errors}`,
+        `Warnings: ${warnings}\n`,
         `\n---\n`,
       ]
 
-      return lines.join("\n")
+      return this.escapeMarkdownV2(lines.join("\n"))
     }
 
     if (event.type === "session.started") {
         const dir = typeof event.payload?.directory === 'string' 
-            ? this.escapeMarkdownV2(event.payload.directory) 
-            : this.escapeMarkdownV2(projectDir)
+            ? event.payload.directory 
+            : projectDir
         const worktree = typeof event.payload?.worktree === 'string' 
-            ? this.escapeMarkdownV2(event.payload.worktree) 
+            ? event.payload.worktree 
             : "default"
-        const escapedProjectName = this.escapeMarkdownV2(projectName)
-        return `[${escapedProjectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
+        const message = `[${projectName}] 🚀 New session started
+
+Dir: ${dir.substring(0, 50)}...
+Worktree: ${worktree.substring(0, 30)}...
+
+---
+`
+        return this.escapeMarkdownV2(message)
     }
 
     if (event.type === "session.status") {
-        const statusType = this.escapeMarkdownV2(event.properties?.status?.type || "unknown")
+        const statusType = event.properties?.status?.type || "unknown"
         const statusIcon = statusType === "busy" ? "🔄" : "⏸️"
-        return `[${this.escapeMarkdownV2(projectName)}] ${statusIcon} Session status: \`${statusType}\`\n\n---\n`
+        const message = `[${projectName}] ${statusIcon} Session status: ${statusType}
+
+---
+`
+        return this.escapeMarkdownV2(message)
     }
 
     if (event.type === "session.diff") {
         const diffList = event.properties?.diff || []
         const fileCount = Array.isArray(diffList) ? diffList.length : 0
         const changes = diffList.map((d: any) => 
-            `• \`${this.escapeMarkdownV2(d.file)}\` → ${this.escapeMarkdownV2(d.status || "modified")}`
+            `• ${d.file} → ${d.status || "modified"}`
         ).slice(0, 5).join("\n")
-        return `[${this.escapeMarkdownV2(projectName)}] 📝 Session diff: \`${fileCount}\` files changed\n\n${changes}\n\n---\n`
+        const message = `[${projectName}] 📝 Session diff: ${fileCount} files changed
+
+${changes}
+
+---
+`
+        return this.escapeMarkdownV2(message)
     }
 
     if (event.type === "session.updated") {
-        const status = this.escapeMarkdownV2(event.payload?.status?.value || event.properties?.status || "updated")
+        const status = event.payload?.status?.value || event.properties?.status || "updated"
         const request = event.payload?.request?.content || event.payload?.request || event.message
         const prompt = event.payload?.prompt || event.properties?.prompt
         const diff = event.payload?.diff || event.properties?.diff
         
         const lines = [
-            `[${this.escapeMarkdownV2(projectName)}] 🔄 Session updated`,
-            `Status: \`${status}\``
+            `[${projectName}] 🔄 Session updated`,
+            `Status: ${status}`
         ]
         
         if (request) {
-            lines.push(`\n📝 \`User Request:\` ${this.escapeMarkdownV2(request.substring(0, 200))}`)
+            lines.push(`\n📝 User Request: ${request.substring(0, 200)}`)
         }
         if (prompt) {
-            lines.push(`\n💡 \`Prompt:\` ${this.escapeMarkdownV2(prompt.substring(0, 200))}`)
+            lines.push(`\n💡 Prompt: ${prompt.substring(0, 200)}`)
         }
         if (diff) {
-            lines.push(`\n⚡ \`Changes:\` \`${this.escapeMarkdownV2(JSON.stringify(diff, null, 2).substring(0, 256))}\``)
+            lines.push(`\n⚡ Changes: ${JSON.stringify(diff, null, 2).substring(0, 256)}`)
         }
         
         lines.push("\n\n---\n")
-        return lines.join("\n")
+        return this.escapeMarkdownV2(lines.join("\n"))
     }
 
     if (event.type === "session.completed") {
-      return `[${this.escapeMarkdownV2(projectName)}] ✅ Session completed\n\nSee summary below for details.\n\n---\n`
+      const message = `[${projectName}] ✅ Session completed
+
+See summary below for details.
+
+---
+`
+      return this.escapeMarkdownV2(message)
     }
 
-    return `[${this.escapeMarkdownV2(projectName)}]\`[${this.escapeMarkdownV2(event.type)}]\`\n\`${this.escapeMarkdownV2(event.title || "No title")}\`\n\n---\n`
+    const message = `[${projectName}] [${event.type}]\n${event.title || "No title"}
+
+---
+`
+    return this.escapeMarkdownV2(message)
   }
 
   private formatMessageUpdate(event: any, projectName: string): string | null {
