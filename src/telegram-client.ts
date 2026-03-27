@@ -82,7 +82,23 @@ export class TelegramClient {
 
       if (!response.ok) {
         const errorText = await response.text()
-        console.error("[Telegram] API error:", response.status, errorText)
+        
+        if (response.status === 404) {
+          // 404: Bot not found or invalid token
+          console.error(
+            `[Telegram] 404 Not Found - Check your bot token. ` +
+            `Error: ${errorText.substring(0, 100)}`
+          )
+        } else if (response.status === 400) {
+          // 400: Bad Request - usually invalid chat_id or message format
+          console.error(
+            `[Telegram] 400 Bad Request - Check chat_id and message format. ` +
+            `Error: ${errorText.substring(0, 200)}`
+          )
+        } else {
+          console.error(`[Telegram] API error: ${response.status} ${errorText.substring(0, 100)}`)
+        }
+        
         return false
       }
 
