@@ -80,7 +80,7 @@ export class EventHandler {
     }
 
     if (event.type === "tool.execute.before") {
-      const toolName = event.toolName || event.arguments?.tool || "unknown"
+      const toolName = this.escapeMarkdownV2(event.toolName || event.arguments?.tool || "unknown")
       return `[${projectName}] 🔧 Using tool: \`${toolName}\`\n\n---\n`
     }
 
@@ -88,12 +88,12 @@ export class EventHandler {
         const success = (event.output?.output && typeof event.output.output === 'string' && event.output.output.includes("success")) 
             || !event.output?.error
         const icon = success ? "✅" : "⚠️"
-        const title = event.output?.title || "Tool executed"
+        const title = this.escapeMarkdownV2(event.output?.title || "Tool executed")
 
         const lines = [`[${projectName}] \`${icon} ${title}\``]
 
         if (event.output?.output?.substring && typeof event.output.output === 'string') {
-            lines.push(event.output.output.substring(0, 256))
+            lines.push(this.escapeMarkdownV2(event.output.output.substring(0, 256)))
         }
 
         lines.push("\n---\n")
@@ -101,11 +101,11 @@ export class EventHandler {
     }
 
     if (event.type === "command.executed") {
-      const cmd = event.arguments?.command || event.command || "command"
+      const cmd = this.escapeMarkdownV2(event.arguments?.command || event.command || "command")
       const lines = [`[${projectName}] 💻 Command: \`${cmd}\``]
 
       if (event.output) {
-        lines.push(event.output.substring(0, 256))
+        lines.push(this.escapeMarkdownV2(event.output.substring(0, 256)))
       }
 
       lines.push("\n---\n")
@@ -130,16 +130,16 @@ export class EventHandler {
 
     if (event.type === "session.started") {
         const dir = typeof event.payload?.directory === 'string' 
-            ? event.payload.directory 
-            : projectDir
+            ? this.escapeMarkdownV2(event.payload.directory) 
+            : this.escapeMarkdownV2(projectDir)
         const worktree = typeof event.payload?.worktree === 'string' 
-            ? event.payload.worktree 
+            ? this.escapeMarkdownV2(event.payload.worktree) 
             : "default"
         return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
     }
 
     if (event.type === "session.status") {
-        const statusType = event.properties?.status?.type || "unknown"
+        const statusType = this.escapeMarkdownV2(event.properties?.status?.type || "unknown")
         const statusIcon = statusType === "busy" ? "🔄" : "⏸️"
         return `[${projectName}] ${statusIcon} Session status: \`${statusType}\`\n\n---\n`
     }
@@ -148,13 +148,13 @@ export class EventHandler {
         const diffList = event.properties?.diff || []
         const fileCount = Array.isArray(diffList) ? diffList.length : 0
         const changes = diffList.map((d: any) => 
-            `• \`${d.file}\` → ${d.status || "modified"}`
+            `• \`${this.escapeMarkdownV2(d.file)}\` → ${this.escapeMarkdownV2(d.status || "modified")}`
         ).slice(0, 5).join("\n")
         return `[${projectName}] 📝 Session diff: \`${fileCount}\` files changed\n\n${changes}\n\n---\n`
     }
 
     if (event.type === "session.updated") {
-        const status = event.payload?.status?.value || event.properties?.status || "updated"
+        const status = this.escapeMarkdownV2(event.payload?.status?.value || event.properties?.status || "updated")
         const request = event.payload?.request?.content || event.payload?.request || event.message
         const prompt = event.payload?.prompt || event.properties?.prompt
         const diff = event.payload?.diff || event.properties?.diff
@@ -165,13 +165,13 @@ export class EventHandler {
         ]
         
         if (request) {
-            lines.push(`\n📝 \`User Request:\` *${request.substring(0, 200)}*`)
+            lines.push(`\n📝 \`User Request:\` *${this.escapeMarkdownV2(request.substring(0, 200))}*`)
         }
         if (prompt) {
-            lines.push(`\n💡 \`Prompt:\` *${prompt.substring(0, 200)}*`)
+            lines.push(`\n💡 \`Prompt:\` *${this.escapeMarkdownV2(prompt.substring(0, 200))}*`)
         }
         if (diff) {
-            lines.push(`\n⚡ \`Changes:\` \`${JSON.stringify(diff, null, 2).substring(0, 256)}\``)
+            lines.push(`\n⚡ \`Changes:\` \`${this.escapeMarkdownV2(JSON.stringify(diff, null, 2).substring(0, 256))}\``)
         }
         
         lines.push("\n\n---\n")
@@ -182,18 +182,163 @@ export class EventHandler {
       return `[${projectName}] ✅ Session completed\n\nSee summary below for details.\n\n---\n`
     }
 
-    return `[${projectName}] \`[${event.type}]\`\n\`${event.title || "No title"}\`\n\n---\n`
+    return `[${projectName}] \`[${this.escapeMarkdownV2(event.type)}]\`\n\`${this.escapeMarkdownV2(event.title || "No title")}\`\n\n---\n`
   }
 
   private formatMessageUpdate(event: any, projectName: string): string | null {
-    const part = event.part || event.properties?.part
-    const role = part?.role || event.role
-    const content = part?.content || event.message?.content || ""
+    if (event.type === "message.part.updated") {
+      const part = event.properties?.part
+      
+      if (!part) {
+        console.log("[formatMessageUpdate] No part in event.properties")
+        return null
+      }
 
-    if (!content || typeof content !== "string") return null
+      const partType = part?.type || "unknown"
+      console.log("[formatMessageUpdate] Part type:", partType);
+      
+      let content = "";
+      
+      if (partType === "text") {
+        content = part?.text || "";
+        console.log("[formatMessageUpdate] Text content:", `"${content}"`, "length:", content.length);
+      } 
+      else if (partType === "reasoning") {
+        content = part?.text || "";
+        console.log("[formatMessageUpdate] Reasoning content:", `"${content}"`, "length:", content.length);
+      }
+      else if (partType === "tool") {
+        const toolName = part?.tool || "unknown"
+        const state = part?.state || {}
+        const status = state?.status || "unknown"
+        
+        if (status === "completed") {
+          const output = state?.output || ""
+          content = `Tool \`${toolName}\` completed: ${output}`
+          console.log("[formatMessageUpdate] Tool result:", content);
+        } else if (status === "error") {
+          const error = state?.error || "Unknown error"
+          content = `Tool \`${toolName}\` failed: ${error}`
+          console.log("[formatMessageUpdate] Tool error:", content);
+        } else {
+          content = `Tool \`${toolName}\` is ${status}`
+          console.log("[formatMessageUpdate] Tool status:", content);
+        }
+        
+        return this.formatTextMessage(projectName, "🔧 Tool", content);
+      }
+      else {
+        content = part?.text || part?.content || ""
+        if (content) {
+          console.log("[formatMessageUpdate] Content from part.text/part.content:", `"${content}"`, "length:", content.length);
+        }
+      }
 
+      if (!content || typeof content !== "string" || content.trim() === "") {
+        console.log("[formatMessageUpdate] No valid content found in part")
+        console.log("[formatMessageUpdate] Part keys:", Object.keys(part || {}));
+        return null
+      }
+
+      let role = "unknown";
+      
+      if (event.properties?.info?.role) {
+        role = event.properties.info.role;
+        console.log("[formatMessageUpdate] Role from event.properties.info:", role);
+      } 
+      else if (part.senderID !== undefined && part.senderID !== null) {
+        role = part.senderID === "user" ? "user" : "assistant";
+        console.log("[formatMessageUpdate] Role from part.senderID:", role);
+      }
+      else if (part.role !== undefined && part.role !== null) {
+        role = part.role === "user" ? "user" : "assistant";
+        console.log("[formatMessageUpdate] Role from part.role:", role);
+      }
+      else {
+        role = "assistant";
+        console.log("[formatMessageUpdate] No role info available, defaulting to assistant");
+      }
+      
+      const sender = role === "user" ? "👤 User" : "🤖 Agent";
+      
+      return this.formatTextMessage(projectName, sender, content)
+    }
+
+    if (event.type === "message.updated") {
+      const info = event.properties?.info
+      
+      if (!info) {
+        console.log("[formatMessageUpdate] No info in event.properties")
+        return null
+      }
+
+      const role = info.role || "unknown"
+      const summary = info.summary
+
+      if (role === "user" && summary) {
+        const title = summary.title || ""
+        const body = summary.body || ""
+        const content = title || body || ""
+
+        if (!content || typeof content !== "string") {
+          return null
+        }
+
+        return this.formatTextMessage(projectName, "👤 User", content)
+      }
+
+      if (role === "assistant") {
+        const tokens = info.tokens?.total || 0
+        const cost = info.cost || 0
+        const path = this.escapeMarkdownV2(info.path || "unknown path")
+        
+        return `[${projectName}] 🤖 Agent completed message\n\n\`\`\`\nPath: ${path}\nTokens: ${tokens}\nCost: $${cost.toFixed(4)}\n\`\`\`\n\n---\n`
+      }
+    }
+
+    const content = event.content || 
+                   event.message?.content || 
+                   event.properties?.content || 
+                   event.properties?.message?.content || ""
+
+    if (!content || typeof content !== "string" || content.trim() === "") {
+      console.log("[formatMessageUpdate] No valid content found for message event")
+      return null
+    }
+
+    const role = event.role || event.properties?.role || 
+                (event.message ? event.message.role : undefined) ||
+                (event.properties?.info ? event.properties?.info.role : undefined)
+    
     const sender = role === "assistant" ? "🤖 Agent" : "👤 User"
-    return `[${projectName}] ${sender}:\n\n\`\`\`\n${content.substring(0, 500)}\n\`\`\`\n\n---\n`
+    
+    return this.formatTextMessage(projectName, sender, content)
+  }
+
+  private formatTextMessage(
+    projectName: string,
+    sender: string,
+    content: string,
+  ): string {
+    const maxLength = 800
+    const truncated = content.length > maxLength
+      ? content.substring(0, maxLength) + "...\n\n(truncated)"
+      : content
+    
+    const escaped = this.escapeMarkdownV2(truncated)
+    return `[${projectName}] ${sender}:\n\n${escaped}\n\n---\n`
+  }
+
+  private escapeMarkdownV2(text: string): string {
+    const charsToEscape = ['_', '*', '[', ']', '(', ')', '~', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    let result = text
+    
+    for (const char of charsToEscape) {
+      const regex = new RegExp(`\\${char}`, 'g')
+      result = result.replace(regex, `\\${char}`)
+    }
+    
+    return result
   }
 
   private async notify(chatId: string, text: string): Promise<boolean> {

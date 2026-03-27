@@ -21,10 +21,13 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     ]),
   ).filter(Boolean)
 
-  const telegramClient = new TelegramClient(config.telegram_bot_token)
-  const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
-  const workSummarizer = new WorkSummarizer()
-  const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
+    const telegramClient = new TelegramClient(config.telegram_bot_token)
+    const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
+    const workSummarizer = new WorkSummarizer()
+    const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
+    
+    // Store references for use in config function
+    const handlers = { eventHandler, telegramClient }
 
   let latestSessionId: string | null = null
 
@@ -49,26 +52,12 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       
       // Extract session_id based on OpenCode event structure
       const getSessionId = (e: any): string | null => {
-        // Priority 1: session.id (session.started/updated/updated events)
-        if (e.info?.id) {
-          return String(e.info.id)
-        }
-        // Priority 2: e.sessionID (session.diff, session.status)
-        if (e.sessionID) {
-          return String(e.sessionID)
-        }
-        // Priority 3: properties.sessionID
-        if (e.properties?.sessionID) {
-          return String(e.properties.sessionID)
-        }
-        // Priority 4: properties.id
-        if (e.properties?.id) {
-          return String(e.properties.id)
-        }
-        // Priority 5: properties.info.id
-        if (e.properties?.info?.id) {
-          return String(e.properties.info.id)
-        }
+        if (e.info?.id) return String(e.info.id)
+        if (e.sessionID) return String(e.sessionID)
+        if (e.properties?.sessionID) return String(e.properties.sessionID)
+        if (e.properties?.id) return String(e.properties.id)
+        if (e.properties?.info?.id) return String(e.properties.info.id)
+        if (e.properties?.info?.sessionID) return String(e.properties.info.sessionID)
         return null
       }
       
@@ -92,12 +81,18 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
       const sessionId = extractedSessionId || latestSessionId
 
-      if (!sessionId) {
+      const isMessagePartEvent = event.type === "message.part.updated"
+      
+      if (!sessionId && !isMessagePartEvent) {
         eventLog(`✗ No session_id (type=${event.type})`)
         return
       }
 
-      eventLog(`✓ Using session: ${sessionId}`)
+      if (sessionId) {
+        eventLog(`✓ Using session: ${sessionId}`)
+      } else if (isMessagePartEvent) {
+        eventLog(`⚡ Message part update (no session_id, using cached)`)
+      }
 
       const projectDir = event.payload?.directory || directory
       const eventProjectName = getProjectNameFromDirectory(projectDir, config)
@@ -127,10 +122,19 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       }
 
       if (["session.completed", "session.finished"].includes(event.type)) {
+        eventLog(`🏁 SESSION COMPLETE EVENT! type=${event.type}, workInProgress=${context.workInProgress}`)
+        console.log("[Index] Session complete event:", {
+          type: event.type,
+          workInProgress: context.workInProgress,
+          eventHistoryLength: context.eventHistory.length,
+          eventName: eventProjectName,
+        })
         if (context.workInProgress) {
           context.workInProgress = false
+          eventLog(`Generating summary with ${context.eventHistory.length} events...`)
           const summary = workSummarizer.generate(context, eventProjectName)
           if (summary) {
+            eventLog(`Summary generated (${summary.length} chars), sending to ${context.telegramChatIds.length} chat(s)`)
             for (const chatId of context.telegramChatIds) {
               await telegramClient.sendMessage({
                 chat_id: chatId,
@@ -138,7 +142,11 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
                 parse_mode: "MarkdownV2"
               })
             }
+          } else {
+            eventLog(`⚠️ Summary was null (no tracked work)`)
           }
+        } else {
+          eventLog(`Skipping summary: workInProgress was false`)
         }
       }
 
@@ -148,19 +156,69 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     },
 
     "chat.message": async (input) => {
+      console.log("[ChatMessageHandler] ======== CHAT MESSAGE RECEIVED ========")
+      console.log("[ChatMessageHandler] input:", JSON.stringify(input, null, 2))
+      
       const sessionId = input.sessionID
+      const messageContent = input.message?.content?.toString() || ""
+      
+      console.log(`[ChatMessageHandler] sessionId: ${sessionId}`)
+      console.log(`[ChatMessageHandler] messageContent: "${messageContent}"`)
+      console.log(`[ChatMessageHandler] messageContent.trim(): "${messageContent.trim()}"`)
+      console.log(`[ChatMessageHandler] isEmpty: ${!messageContent.trim()}`)
+      
+      if (!messageContent.trim()) {
+        console.log("[ChatMessageHandler] Ignoring empty message")
+        return // Ignore empty messages
+      }
+      
+      // Find the project context for this session
+      console.log(`[ChatMessageHandler] Looking for sessionId ${sessionId} in projectContext`)
+      console.log(`[ChatMessageHandler] projectContext size: ${projectContext.size}`)
+      
       for (const [dir, ctx] of projectContext.entries()) {
+        console.log(`[ChatMessageHandler] Checking dir: ${dir}, lastSessionId: ${ctx.lastSessionId}, telegramChatIds length: ${ctx.telegramChatIds.length}`)
         if (ctx.lastSessionId === sessionId && ctx.telegramChatIds.length > 0) {
           const projectName = getProjectNameFromDirectory(dir, config)
-          for (const chatId of ctx.telegramChatIds) {
-            await telegramClient.sendMessage({
-              chat_id: chatId,
-              text: `[${projectName}] 📝 User: ${input.message?.content || "[message content]"}`,
-              parse_mode: "MarkdownV2"
+          console.log(`[ChatMessageHandler] Found matching project: ${projectName}`)
+          
+          try {
+            // Send the user's message to the OpenCode session using the OpenCode client
+            console.log(`[ChatMessageHandler] Sending message to session ${sessionId}: "${messageContent.substring(0, 50)}${messageContent.length > 50 ? "..." : ""}"`)
+            
+            // Use the OpenCode client to send a user message to the session
+            await client.session.prompt({
+              path: { id: sessionId },
+              body: {
+                parts: [{ type: "text", text: messageContent }],
+              },
             })
+            
+            // Send confirmation back to Telegram
+            for (const chatId of ctx.telegramChatIds) {
+              await telegramClient.sendMessage({
+                chat_id: chatId,
+                text: `[${projectName}] 📩 Message sent to OpenCode session`,
+                parse_mode: "MarkdownV2"
+              })
+            }
+          } catch (error) {
+            console.error("[ChatMessageHandler] Error sending message to OpenCode:", error)
+            console.error("[ChatMessageHandler] Error stack:", error.stack)
+            // Send error notification to Telegram
+            for (const chatId of ctx.telegramChatIds) {
+              await telegramClient.sendMessage({
+                chat_id: chatId,
+                text: `[${projectName}] ❌ Failed to send message: ${error.message}`,
+                parse_mode: "MarkdownV2"
+              })
+            }
           }
+          break
         }
       }
+      
+      console.log("[ChatMessageHandler] ======== CHAT MESSAGE PROCESSING COMPLETE ========")
     },
 
     "tool.execute.after": async (input) => {
@@ -177,6 +235,30 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         }
       }
     },
+    
+    shouldNotify: (eventType: string) => {
+      const lowerEventType = eventType.toLowerCase()
+      const shouldTrackEvents = [
+        "message.created",
+        "message.updated",
+        "message.part.updated",
+        "tool.execute.before",
+        "tool.execute.after",
+        "command.executed",
+        "lsp.client.diagnostics",
+        "session.started",
+        "session.status",
+        "session.diff",
+        "session.updated",
+        "session.completed",
+        "session.finished",
+      ]
+      const result = shouldTrackEvents.some((pattern) => 
+        lowerEventType.includes(pattern.toLowerCase())
+      )
+      console.log(`[TelegramPlugin] shouldNotify check: "${eventType}" -> ${result}`)
+      return result
+    },
 
     config: async () => {
       try {
@@ -191,12 +273,45 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         console.error("Failed to send startup message:", e)
       }
       
+      // Start polling for incoming Telegram messages
+      setInterval(async () => {
+        try {
+          const updates = await telegramClient.getUpdates()
+          for (const update of updates) {
+            if (update.message) {
+              const parsed = telegramClient.parseMessage(update.message.text)
+              if (parsed.type === "message") {
+                // Use the stored handler references
+                const fakeInput = {
+                  client,
+                  directory,
+                  worktree
+                }
+                
+                const fakeMessage = {
+                  sessionID: latestSessionId, // Use the last known session ID
+                  content: parsed.message
+                }
+                
+                // Process as a chat.message event using the stored handler
+                await handlers.eventHandler.handle(fakeMessage, directory, projectName, defaultChatIds, {
+                  telegramClient: handlers.telegramClient.sendMessage.bind(handlers.telegramClient)
+                })
+              }
+            }
+          }
+        } catch (error) {
+          console.error("[TelegramPlugin] Error polling Telegram:", error)
+        }
+      }, 1000) // Poll every second
+      
       console.log("\n===== [TelegramPlugin] Initialized ====")
       console.log("  Directory:", directory)
       console.log("  Bot token set:", !!(config.telegram_bot_token))
       console.log("  Projects:", config.projects?.length || 0)
       console.log("  Chat IDs:", defaultChatIds)
       console.log("  TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID || "NOT SET")
+      console.log("  Polling Telegram for messages: Enabled (1s interval)")
       console.log("=================================\n")
     }
   }

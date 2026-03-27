@@ -65,7 +65,7 @@ export class TelegramClient {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           chat_id: params.chat_id,
-          text: params.parse_mode === "MarkdownV2" ? this.escapeMarkdownV2(params.text) : params.text,
+          text: params.text,
           parse_mode: params.parse_mode || "MarkdownV2",
           reply_to_message_id: params.reply_to_message_id,
         }),

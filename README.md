@@ -347,11 +347,30 @@ Apache License 2.0 — see [LICENSE](LICENSE) for details.
 4. Push to branch (`git push origin feature/improvement`)
 5. Open Pull Request
 
+## Documentation
+
+### Event & Message Structure
+
+Understand how OpenCode events and messages are structured:
+
+- [Message Structure Guide](./doc/message-structure.md) — Complete guide on event types, message/Part structures, field paths
+- [Event Types Reference](./doc/event-types-reference.md) — All event types with field mappings and examples
+
+**Key Concepts**:
+- Messages stored with metadata in `message.updated.events.properties.info`
+- Actual content in `message.part.updated.events.properties.part`
+- Text content accessible via `part.text` (for `text` type parts)
+- Tool outputs in `part.state.output` (for `tool` type parts)
+
+---
+
 ## Resources
 
 - [OpenCode Documentation](https://opencode.ai/docs)
 - [Telegram Bot API](https://core.telegram.org/bots/api)
 - [OpenCode Plugin Guide](https://opencode.ai/docs/plugins)
+- [Project Source Code](./src/)
+- [Type Definitions](./opencode/packages/sdk/js/src/v2/gen/types.gen.ts) — OpenCode SDK types
 
 ---
 
