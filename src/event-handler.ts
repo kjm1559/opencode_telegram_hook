@@ -92,7 +92,8 @@ export class EventHandler {
 
     if (event.type === "tool.execute.before") {
       const toolName = this.escapeMarkdownV2(event.toolName || event.arguments?.tool || "unknown")
-      return `[${projectName}] 🔧 Using tool: \`${toolName}\`\n\n---\n`
+      const escapedProjectName = this.escapeMarkdownV2(projectName)
+      return `[${escapedProjectName}] 🔧 Using tool: \`${toolName}\`\n\n---\n`
     }
 
     if (event.type === "tool.execute.after") {
@@ -100,8 +101,9 @@ export class EventHandler {
             || !event.output?.error
         const icon = success ? "✅" : "⚠️"
         const title = this.escapeMarkdownV2(event.output?.title || "Tool executed")
+        const escapedProjectName = this.escapeMarkdownV2(projectName)
 
-        const lines = [`[${projectName}] \`${icon} ${title}\``]
+        const lines = [`[${escapedProjectName}] \`${icon} ${title}\``]
 
         if (event.output?.output?.substring && typeof event.output.output === 'string') {
             lines.push(this.escapeMarkdownV2(event.output.output.substring(0, 256)))
@@ -113,7 +115,8 @@ export class EventHandler {
 
     if (event.type === "command.executed") {
       const cmd = this.escapeMarkdownV2(event.arguments?.command || event.command || "command")
-      const lines = [`[${projectName}] 💻 Command: \`${cmd}\``]
+      const escapedProjectName = this.escapeMarkdownV2(projectName)
+      const lines = [`[${escapedProjectName}] 💻 Command: \`${cmd}\``]
 
       if (event.output) {
         lines.push(this.escapeMarkdownV2(event.output.substring(0, 256)))
@@ -129,8 +132,9 @@ export class EventHandler {
 
       if (errors === 0 && warnings === 0) return null
 
+      const escapedProjectName = this.escapeMarkdownV2(projectName)
       const lines = [
-        `[${projectName}] 🐛 LSP Diagnostics:`,
+        `[${escapedProjectName}] 🐛 LSP Diagnostics:`,
         `Errors: \`${errors}\``,
         `Warnings: \`${warnings}\`\n`,
         `\n---\n`,
@@ -146,13 +150,14 @@ export class EventHandler {
         const worktree = typeof event.payload?.worktree === 'string' 
             ? this.escapeMarkdownV2(event.payload.worktree) 
             : "default"
-        return `[${projectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
+        const escapedProjectName = this.escapeMarkdownV2(projectName)
+        return `[${escapedProjectName}] 🚀 New session started\n\nDir: \`${dir.substring(0, 50)}...\`\nWorktree: \`${worktree.substring(0, 30)}...\`\n\n---\n`
     }
 
     if (event.type === "session.status") {
         const statusType = this.escapeMarkdownV2(event.properties?.status?.type || "unknown")
         const statusIcon = statusType === "busy" ? "🔄" : "⏸️"
-        return `[${projectName}] ${statusIcon} Session status: \`${statusType}\`\n\n---\n`
+        return `[${this.escapeMarkdownV2(projectName)}] ${statusIcon} Session status: \`${statusType}\`\n\n---\n`
     }
 
     if (event.type === "session.diff") {
@@ -161,7 +166,7 @@ export class EventHandler {
         const changes = diffList.map((d: any) => 
             `• \`${this.escapeMarkdownV2(d.file)}\` → ${this.escapeMarkdownV2(d.status || "modified")}`
         ).slice(0, 5).join("\n")
-        return `[${projectName}] 📝 Session diff: \`${fileCount}\` files changed\n\n${changes}\n\n---\n`
+        return `[${this.escapeMarkdownV2(projectName)}] 📝 Session diff: \`${fileCount}\` files changed\n\n${changes}\n\n---\n`
     }
 
     if (event.type === "session.updated") {
@@ -171,7 +176,7 @@ export class EventHandler {
         const diff = event.payload?.diff || event.properties?.diff
         
         const lines = [
-            `[${projectName}] 🔄 Session updated`,
+            `[${this.escapeMarkdownV2(projectName)}] 🔄 Session updated`,
             `Status: \`${status}\``
         ]
         
@@ -190,10 +195,10 @@ export class EventHandler {
     }
 
     if (event.type === "session.completed") {
-      return `[${projectName}] ✅ Session completed\n\nSee summary below for details.\n\n---\n`
+      return `[${this.escapeMarkdownV2(projectName)}] ✅ Session completed\n\nSee summary below for details.\n\n---\n`
     }
 
-    return `[${projectName}] \`[${this.escapeMarkdownV2(event.type)}]\`\n\`${this.escapeMarkdownV2(event.title || "No title")}\`\n\n---\n`
+    return `[${this.escapeMarkdownV2(projectName)}]\`[${this.escapeMarkdownV2(event.type)}]\`\n\`${this.escapeMarkdownV2(event.title || "No title")}\`\n\n---\n`
   }
 
   private formatMessageUpdate(event: any, projectName: string): string | null {
@@ -302,8 +307,9 @@ export class EventHandler {
         const tokens = info.tokens?.total || 0
         const cost = info.cost || 0
         const path = this.escapeMarkdownV2(info.path || "unknown path")
+        const escapedProjectName = this.escapeMarkdownV2(projectName)
         
-        return `[${projectName}] 🤖 Agent completed message\n\n\`\`\`\nPath: ${path}\nTokens: ${tokens}\nCost: $${cost.toFixed(4)}\n\`\`\`\n\n---\n`
+        return `[${escapedProjectName}] 🤖 Agent completed message\n\n\`\`\`\nPath: ${path}\nTokens: ${tokens}\nCost: $${cost.toFixed(4)}\n\`\`\`\n\n---\n`
       }
     }
 
@@ -337,32 +343,19 @@ export class EventHandler {
       : content
     
     const escaped = this.escapeMarkdownV2(truncated)
-    return `[${projectName}] ${sender}:\n\n${escaped}\n\n---\n`
+    return `[${this.escapeMarkdownV2(projectName)}] ${sender}:\n\n${escaped}\n\n---\n`
   }
 
   private escapeMarkdownV2(text: string): string {
-    let result = text
+    // Telegram MarkdownV2 requires escaping these characters with backslash
+    // Process backslash FIRST to avoid double-escaping
+    let result = text.replace(/\\/g, '\\\\')
     
-    // MUST escape backslash FIRST to avoid double-escaping
-    result = result.replace(/\\/g, '\\\\')
-    result = result.replace(/_/g, '\\_')
-    result = result.replace(/\*/g, '\\*')
-    result = result.replace(/\[/g, '\\[')
-    result = result.replace(/\]/g, '\\]')
-    result = result.replace(/\(/g, '\\(')
-    result = result.replace(/\)/g, '\\)')
-    result = result.replace(/~/g, '\\~')
-    result = result.replace(/`/g, '\\`')
-    result = result.replace(/>/g, '\\>')
-    result = result.replace(/#/g, '\\#')
-    result = result.replace(/\+/g, '\\+')
-    result = result.replace(/-/g, '\\-')
-    result = result.replace(/=/g, '\\=')
-    result = result.replace(/\|/g, '\\|')
-    result = result.replace(/\{/g, '\\{')
-    result = result.replace(/\}/g, '\\}')
-    result = result.replace(/\./g, '\\.')
-    result = result.replace(/!/g, '\\!')
+    // Then escape all other special characters
+    const specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for (const char of specialChars) {
+      result = result.replace(new RegExp(char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '\\' + char)
+    }
     
     return result
   }

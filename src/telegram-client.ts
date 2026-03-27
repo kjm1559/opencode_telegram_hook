@@ -19,34 +19,28 @@ export namespace Telegram {
 
 export class TelegramClient {
   private readonly botToken: string
+  private lastUpdateId: number = 0
+  private consecutive409Count: number = 0
+  private readonly MAX_CONFLICT_RETRIES: number = 5
 
   constructor(botToken?: string) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
   }
 
+  getLastUpdateId(): number {
+    return this.lastUpdateId
+  }
+
   escapeMarkdownV2(text: string): string {
-    const chars = ['\\\\', '_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
-    let result = text
+    // Telegram MarkdownV2 requires escaping these characters with backslash
+    // Process backslash FIRST to avoid double-escaping
+    let result = text.replace(/\\/g, '\\\\')
     
-    result = result.replace(/\\/g, '\\\\')
-    result = result.replace(/\_/g, '\\_')
-    result = result.replace(/\*/g, '\\*')
-    result = result.replace(/\[/g, '\\[')
-    result = result.replace(/\]/g, '\\]')
-    result = result.replace(/\(/g, '\\(')
-    result = result.replace(/\)/g, '\\)')
-    result = result.replace(/~/g, '\\~')
-    result = result.replace(/`/g, '\\`')
-    result = result.replace(/>/g, '\\>')
-    result = result.replace(/#/g, '\\#')
-    result = result.replace(/\+/g, '\\+')
-    result = result.replace(/-/g, '\\-')
-    result = result.replace(/=/g, '\\=')
-    result = result.replace(/\|/g, '\\|')
-    result = result.replace(/\{/g, '\\{')
-    result = result.replace(/\}/g, '\\}')
-    result = result.replace(/\./g, '\\.')
-    result = result.replace(/!/g, '\\!')
+    // Then escape all other special characters
+    const specialChars = ['_', '*', '[', ']', '(', ')', '~', '`', '>', '#', '+', '-', '=', '|', '{', '}', '.', '!']
+    for (const char of specialChars) {
+      result = result.replace(new RegExp(char.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g'), '\\' + char)
+    }
     
     return result
   }
@@ -158,19 +152,48 @@ export class TelegramClient {
     }
 
     try {
+      const offset = this.lastUpdateId + 1
       const response = await fetch(
-        `https://api.telegram.org/bot${this.botToken}/getUpdates`,
+        `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`,
         {
           method: "GET",
         },
       )
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
+        if (response.status === 409) {
+          this.consecutive409Count++
+          console.log(
+            `[Telegram] Resetting update offset due to conflict (attempt ${this.consecutive409Count})`
+          )
+          this.lastUpdateId = 0
+          
+          if (this.consecutive409Count > this.MAX_CONFLICT_RETRIES) {
+            console.warn(
+              `[Telegram] WARNING: Persistent 409 conflicts (${this.consecutive409Count} attempts). ` +
+              'Possible causes: multiple bot instances, webhook still active, or stale offset.'
+            )
+            this.consecutive409Count = 0 // Reset counter to avoid spam
+          }
+          return []
+        }
+        // Reset 409 counter on other errors
+        this.consecutive409Count = 0
+        console.error(`[Telegram] HTTP error: ${response.status}`)
+        return []
       }
+      
+      // Success - reset 409 counter
+      this.consecutive409Count = 0
 
       const data = await response.json()
-      return data.result || []
+      const updates = data.result || []
+      
+      if (updates.length > 0) {
+        this.lastUpdateId = Math.max(this.lastUpdateId, ...updates.map(u => u.update_id))
+      }
+      
+      return updates
     } catch (error) {
       console.error("[Telegram] Failed to get updates:", error)
       return []

@@ -131,7 +131,7 @@ export class WorkSummarizer {
     }
 
     const summary = [
-      `✅ **[${projectName}] Work Completed**!`,
+      `✅ **[${projectName}] Work Completed**`,
       "",
       "**Actions**:",
       ...sections,

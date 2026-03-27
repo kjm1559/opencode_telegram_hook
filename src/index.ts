@@ -133,15 +133,15 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
           context.workInProgress = false
           eventLog(`Generating summary with ${context.eventHistory.length} events...`)
           const summary = workSummarizer.generate(context, eventProjectName)
-          if (summary) {
-            eventLog(`Summary generated (${summary.length} chars), sending to ${context.telegramChatIds.length} chat(s)`)
-            for (const chatId of context.telegramChatIds) {
-              await telegramClient.sendMessage({
-                chat_id: chatId,
-                text: summary,
-                parse_mode: "MarkdownV2"
-              })
-            }
+            if (summary) {
+              eventLog(`Summary generated (${summary.length} chars), sending to ${context.telegramChatIds.length} chat(s)`)
+              for (const chatId of context.telegramChatIds) {
+                await telegramClient.sendMessage({
+                  chat_id: chatId,
+                  text: summary,  // Already escaped by workSummarizer
+                  parse_mode: "MarkdownV2"
+                })
+              }
           } else {
             eventLog(`⚠️ Summary was null (no tracked work)`)
           }
@@ -196,9 +196,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
             
             // Send confirmation back to Telegram
             for (const chatId of ctx.telegramChatIds) {
+              const escapedText = `[${telegramClient.escapeMarkdownV2(projectName)}] 📩 Message sent to OpenCode session`
               await telegramClient.sendMessage({
                 chat_id: chatId,
-                text: `[${projectName}] 📩 Message sent to OpenCode session`,
+                text: escapedText,
                 parse_mode: "MarkdownV2"
               })
             }
@@ -207,9 +208,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
             console.error("[ChatMessageHandler] Error stack:", error.stack)
             // Send error notification to Telegram
             for (const chatId of ctx.telegramChatIds) {
+              const escapedError = `[${telegramClient.escapeMarkdownV2(projectName)}] ❌ Failed to send message: ${telegramClient.escapeMarkdownV2(error.message)}`
               await telegramClient.sendMessage({
                 chat_id: chatId,
-                text: `[${projectName}] ❌ Failed to send message: ${error.message}`,
+                text: escapedError,
                 parse_mode: "MarkdownV2"
               })
             }
@@ -263,11 +265,15 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     config: async () => {
       try {
         if (defaultChatIds.length > 0) {
+          const escapedProjectName = telegramClient.escapeMarkdownV2(projectName)
+          const escapedDirectory = telegramClient.escapeMarkdownV2(directory)
+          const startupMessage = `🔧 *Telegram Plugin Loaded*\n\n📂 *Project:* ${escapedProjectName}\n📁 *Directory:* ${escapedDirectory}\n\nPlugin is now active and ready to receive events from OpenCode.`
           await telegramClient.sendMessage({
             chat_id: defaultChatIds[0],
-            text: `🔧 *Telegram Plugin Loaded*\n\n📂 *Project:* ${projectName}\n📁 *Directory:* \`${directory}\`\n\nPlugin is now active and ready to receive events from OpenCode.`,
+            text: startupMessage,
             parse_mode: "MarkdownV2"
           })
+          console.log("[Telegram] Startup message sent successfully")
         }
       } catch (e) {
         console.error("Failed to send startup message:", e)
@@ -306,18 +312,20 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
                       
                       // Send confirmation back to Telegram
                       for (const chatId of ctx.telegramChatIds) {
+                        const escapedText = `[${telegramClient.escapeMarkdownV2(projName)}] 📩 Message sent to OpenCode session`
                         await telegramClient.sendMessage({
                           chat_id: chatId,
-                          text: `[${projName}] 📩 Message sent to OpenCode session`,
+                          text: escapedText,
                           parse_mode: "MarkdownV2"
                         })
                       }
                     } catch (error) {
                       console.error("[TelegramPoll] Error sending message to OpenCode:", error)
                       for (const chatId of ctx.telegramChatIds) {
+                        const escapedError = `[${telegramClient.escapeMarkdownV2(projName)}] ❌ Failed to send message: ${telegramClient.escapeMarkdownV2(error.message)}`
                         await telegramClient.sendMessage({
                           chat_id: chatId,
-                          text: `[${projName}] ❌ Failed to send message: ${error.message}`,
+                          text: escapedError,
                           parse_mode: "MarkdownV2"
                         })
                       }
@@ -328,13 +336,6 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
                 
                 if (!sessionId) {
                   console.log("[TelegramPoll] No active session found")
-                  for (const chatId of defaultChatIds) {
-                    await telegramClient.sendMessage({
-                      chat_id: chatId,
-                      text: `❌ No active session. Use /status to check active projects.`,
-                      parse_mode: "MarkdownV2"
-                    })
-                  }
                 }
               }
             }
