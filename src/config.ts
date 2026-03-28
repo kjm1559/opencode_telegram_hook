@@ -100,7 +100,7 @@ export function getProjectNameFromDirectory(path: string, config: Config): strin
   if (project) return project.display_name
 
   const lastSegment = path.split(/[\/]/).pop() || "project"
-  return lastSegment.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9_\-]/g, "-")
+  return lastSegment.replace(/[^a-zA-Z0-9_-]/g, "-")
 }
 
 /**

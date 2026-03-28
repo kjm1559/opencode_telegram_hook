@@ -288,11 +288,9 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 📁 Directory: ${directory}
 
 Plugin is now active and ready to receive events from OpenCode.`
-          const escapedMessage = telegramClient.escapeMarkdownV2(startupText)
           await telegramClient.sendMessage({
             chat_id: defaultChatIds[0],
-            text: escapedMessage,
-            parse_mode: "MarkdownV2"
+            text: startupText
           })
           console.log(`[Telegram] Startup message sent for ${projectName}`)
         } catch (e) {
