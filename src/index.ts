@@ -212,8 +212,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
               const escapedText = `[${telegramClient.escapeMarkdownV2(projectName)}] 📩 Message sent to OpenCode session`
               await telegramClient.sendMessage({
                 chat_id: chatId,
-                text: escapedText,
-                parse_mode: "MarkdownV2"
+                text: escapedText
               })
             }
           } catch (error) {
@@ -224,8 +223,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
               const escapedError = `[${telegramClient.escapeMarkdownV2(projectName)}] ❌ Failed to send message: ${telegramClient.escapeMarkdownV2(error.message)}`
               await telegramClient.sendMessage({
                 chat_id: chatId,
-                text: escapedError,
-                parse_mode: "MarkdownV2"
+                text: escapedError
               })
             }
           }

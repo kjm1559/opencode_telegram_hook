@@ -411,7 +411,6 @@ See summary below for details.
     return await this.telegramClient({
       chat_id: chatId,
       text,
-      parse_mode: "MarkdownV2",
     })
   }
 }

@@ -56,7 +56,6 @@ async function runTests() {
   const result = await client.sendMessage({
     chat_id: chatId,
     text: `🤖 *Telegram Plugin Test*\n\nPlugin is working!\nTime: ${new Date().toISOString()}`,
-    parse_mode: "MarkdownV2",
   })
   console.log(`  ${result ? '✅' : '❌'} Message sent: ${result}`)
 

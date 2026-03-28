@@ -156,6 +156,12 @@ export class TelegramClient {
       const parts = trimmed.slice(9).trim().split(/\s+/)
       const projectName = parts[0]
       const message = parts.slice(1).join(" ")
+      
+      console.log("[parseMessage] /project command parsed:", {
+        projectName,
+        message: message.substring(0, 50)
+      })
+      
       return {
         type: "project_message",
         projectName,

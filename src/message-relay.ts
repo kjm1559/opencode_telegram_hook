@@ -86,7 +86,6 @@ export class MessageRelay {
     return await this.telegramClient({
       chat_id: chatId,
       text: `❓ Unknown command: ${cmd}\n\nUse /help to see available commands.\n\n---\n`,
-      parse_mode: "MarkdownV2",
     })
   }
 
@@ -107,7 +106,6 @@ export class MessageRelay {
           return await this.telegramClient({
             chat_id: chatId,
             text: `✅ Linked \`${projectName}\` to latest session\n\nSession ID: \`${activeSession.id.substring(0, 8)}...\`\n\nSend message like:\n\n\`\`\`[${projectName}] your task\`\`\``,
-            parse_mode: "MarkdownV2",
           })
         }
 
@@ -122,7 +120,6 @@ export class MessageRelay {
           return await this.telegramClient({
             chat_id: chatId,
             text: `✅ Session initialized\n\nSession ID: \`${activeSession.id.substring(0, 8)}...\`\nProject: \`${generatedName}\`\n\nSend your task request.\n\n---\n`,
-            parse_mode: "MarkdownV2",
           })
         }
       }
@@ -130,14 +127,12 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: "⚠️ No active sessions found.\n\nStart a session in OpenCode first.\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     } catch (error) {
       console.error("[MessageRelay] Failed to list sessions:", error)
       return await this.telegramClient({
         chat_id: chatId,
         text: "❌ Failed to initialize session. Check connection.\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     }
   }
@@ -165,7 +160,6 @@ export class MessageRelay {
     return await this.telegramClient({
       chat_id: chatId,
       text: helpText,
-      parse_mode: "MarkdownV2",
     })
   }
 
@@ -174,7 +168,6 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: "⚠️ Usage: /new project-name\n\nExample: /new my-feature\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     }
 
@@ -184,7 +177,6 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: `⚠️ Project \`${projectName}\` not found in configuration.\n\nConfigure projects in telegram-plugin-config.json\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     }
 
@@ -200,7 +192,6 @@ export class MessageRelay {
         return await this.telegramClient({
           chat_id: chatId,
           text: "❌ Failed to create session.\n\n---\n",
-          parse_mode: "MarkdownV2",
         })
       }
 
@@ -213,14 +204,12 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: `✅ New session created for \`${projectName}\`\n\nSession ID: \`${newSession.id.substring(0, 8)}...\`\nDirectory: \`${projectDir.substring(0, 50)}...\`\n\nSend your task:\n\`\`\`[${projectName}] your request\`\`\`\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     } catch (error) {
       console.error("[MessageRelay] Failed to create session:", error)
       return await this.telegramClient({
         chat_id: chatId,
         text: `❌ Failed to create session: ${error instanceof Error ? error.message : String(error)}\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     }
   }
@@ -232,7 +221,6 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: "⚠️ No active projects found.\n\nUse /start first.\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     }
 
@@ -242,7 +230,6 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: `⚠️ Project \`${targetProject}\` not linked.\n\nUse /start or /new first.\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     }
 
@@ -262,14 +249,12 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: `🛑 Cancellation sent for \`${targetProject}\`.\n\nThe agent will stop shortly.\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     } catch (error) {
       console.error("[MessageRelay] Failed to cancel:", error)
       return await this.telegramClient({
         chat_id: chatId,
         text: `❌ Failed to cancel \`${targetProject}\`.\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     }
   }
@@ -279,7 +264,6 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: "⚠️ No active projects.\n\nUse /start to link a session.\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     }
 
@@ -312,7 +296,6 @@ export class MessageRelay {
     return await this.telegramClient({
       chat_id: chatId,
       text: statusText.join("\n"),
-      parse_mode: "MarkdownV2",
     })
   }
 
@@ -321,7 +304,6 @@ export class MessageRelay {
       return await this.telegramClient({
         chat_id: chatId,
         text: "⚠️ No projects configured.\n\nAdd projects to telegram-plugin-config.json\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     }
 
@@ -341,7 +323,6 @@ Use \`[project-name] message\` to send messages.
     return await this.telegramClient({
       chat_id: chatId,
       text,
-      parse_mode: "MarkdownV2",
     })
   }
 
@@ -357,7 +338,6 @@ Use \`[project-name] message\` to send messages.
         return await this.telegramClient({
           chat_id: chatId,
           text: `⚠️ No active session for \`${projectName}\`.\n\nUse \`/new ${projectName}\` to create one.\n\n---\n`,
-          parse_mode: "MarkdownV2",
         })
       }
 
@@ -380,14 +360,12 @@ Use \`[project-name] message\` to send messages.
       return await this.telegramClient({
         chat_id: chatId,
         text: `📨 Sent to \`${projectName}\`\n\nWaiting for agent response...\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     } catch (error) {
       console.error("[MessageRelay] Failed to forward message:", error)
       return await this.telegramClient({
         chat_id: chatId,
         text: `❌ Failed to send to \`${projectName}\`: ${error instanceof Error ? error.message : String(error)}\n\n---\n`,
-        parse_mode: "MarkdownV2",
       })
     }
   }
@@ -399,7 +377,6 @@ Use \`[project-name] message\` to send messages.
       return await this.telegramClient({
         chat_id: chatId,
         text: "⚠️ No active projects.\n\nUse \`/start\` to link a session or specify project in message:\n\n\`\`\`[project-name] your message\`\`\`\n\n---\n",
-        parse_mode: "MarkdownV2",
       })
     }
 
