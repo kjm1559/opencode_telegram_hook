@@ -152,8 +152,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
               for (const chatId of context.telegramChatIds) {
                 await telegramClient.sendMessage({
                   chat_id: chatId,
-                  text: summary,  // Already escaped by workSummarizer
-                  parse_mode: "MarkdownV2"
+                  text: summary
                 })
               }
           } else {
@@ -386,11 +385,11 @@ async function globalPollingLoop() {
               },
             })
             
-            // Send confirmation back to Telegram
-            await firstProject.telegramClient.sendMessage({
-              chat_id: update.message.chat.id,
-              text: `✅ Message sent to ${parsed.projectName} session`,
-            })
+              // Send confirmation back to Telegram
+              await firstProject.telegramClient.sendMessage({
+                chat_id: update.message.chat.id,
+                text: `✅ Message sent to ${parsed.projectName} session`,
+              })
           } catch (error) {
             console.error(`[TelegramPoll] Error sending message to ${parsed.projectName}:`, error)
             await firstProject.telegramClient.sendMessage({
