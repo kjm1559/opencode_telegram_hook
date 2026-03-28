@@ -209,21 +209,16 @@ export class TelegramClient {
       return []
     }
 
-    // Delete webhook on first call to ensure clean state
-    if (!this.webhookDeleted) {
-      try {
-        const webhookUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook`
-        console.log("[getUpdates] Deleting webhook:", webhookUrl.substring(0, 80) + "...")
-        const webhookResponse = await fetch(webhookUrl, { method: "POST" })
-        const webhookData = await webhookResponse.json()
-        console.log("[getUpdates] Webhook delete response:", webhookResponse.status, webhookData)
-        this.webhookDeleted = true
-        console.log("[getUpdates] Webhook deleted successfully")
-      } catch (e) {
-        console.error("[getUpdates] Failed to delete webhook:", e)
-      }
-    } else {
-      console.log("[getUpdates] Webhook already deleted, skipping")
+    // Always delete webhook to ensure clean state
+    try {
+      const webhookUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook`
+      console.log("[getUpdates] Deleting webhook:", webhookUrl.substring(0, 80) + "...")
+      const webhookResponse = await fetch(webhookUrl, { method: "POST" })
+      const webhookData = await webhookResponse.json()
+      console.log("[getUpdates] Webhook delete response:", webhookResponse.status, webhookData.ok ? "success" : webhookData.description)
+      this.webhookDeleted = true
+    } catch (e) {
+      console.error("[getUpdates] Failed to delete webhook:", e)
     }
 
     try {
