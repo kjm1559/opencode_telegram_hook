@@ -24,6 +24,7 @@ export class TelegramClient {
   private readonly MAX_CONFLICT_RETRIES: number = 5
   private last409Time: number = 0
   private readonly MIN_RETRY_INTERVAL: number = 5000 // 5 seconds between retries after 409
+  private webhookDeleted = false // Track if webhook has been deleted
 
   constructor(botToken?: string) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
@@ -183,13 +184,16 @@ export class TelegramClient {
     }
 
     try {
-      // First, delete any existing webhook to avoid conflicts
-      try {
-        await fetch(`https://api.telegram.org/bot${this.botToken}/deleteWebhook`, {
-          method: "POST",
-        })
-      } catch (e) {
-        // Ignore webhook deletion errors
+      if (!this.webhookDeleted) {
+        try {
+          await fetch(`https://api.telegram.org/bot${this.botToken}/deleteWebhook`, {
+            method: "POST",
+          })
+          this.webhookDeleted = true
+          console.log("[Telegram] Deleted existing webhook")
+        } catch (e) {
+          // Ignore webhook deletion errors
+        }
       }
       
       // Don't use offset on 409 conflict - let Telegram determine the correct offset
