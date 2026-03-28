@@ -205,6 +205,7 @@ export class TelegramClient {
     }
   }>> {
     if (!this.botToken) {
+      console.log("[getUpdates] No bot token")
       return []
     }
 
@@ -212,22 +213,44 @@ export class TelegramClient {
       const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
       
+      console.log("[getUpdates] Calling Telegram API:", {
+        lastUpdateId: this.lastUpdateId,
+        url: url.substring(0, 80) + "..."
+      })
+      
       const response = await fetch(url, { method: "GET" })
       
+      console.log("[getUpdates] Response status:", response.status)
+      
       if (!response.ok) {
+        console.error("[getUpdates] API error:", response.status)
         return []
       }
 
       const data = await response.json()
       const updates = data.result || []
       
+      console.log("[getUpdates] Received updates:", updates.length)
+      
       if (updates.length > 0) {
         this.lastUpdateId = Math.max(this.lastUpdateId, ...updates.map(u => u.update_id))
+        console.log("[getUpdates] Updated lastUpdateId to:", this.lastUpdateId)
+        
+        // Log each update
+        updates.forEach(u => {
+          if (u.message) {
+            console.log("[getUpdates] Update details:", {
+              update_id: u.update_id,
+              chat_id: u.message.chat.id,
+              text: u.message.text.substring(0, 100)
+            })
+          }
+        })
       }
       
       return updates
     } catch (error) {
-      console.error("[Telegram] Failed to get updates:", error)
+      console.error("[getUpdates] Error:", error)
       return []
     }
   }
