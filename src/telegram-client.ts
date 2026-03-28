@@ -71,15 +71,21 @@ export class TelegramClient {
     try {
       const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`
 
+      const payload: any = {
+        chat_id: params.chat_id,
+        text: params.text,
+        reply_to_message_id: params.reply_to_message_id,
+      }
+      
+      // Only add parse_mode if explicitly provided
+      if (params.parse_mode) {
+        payload.parse_mode = params.parse_mode
+      }
+
       const response = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chat_id: params.chat_id,
-          text: params.text,
-          parse_mode: params.parse_mode || "MarkdownV2",
-          reply_to_message_id: params.reply_to_message_id,
-        }),
+        body: JSON.stringify(payload),
       })
 
       if (!response.ok) {
