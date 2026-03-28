@@ -12,8 +12,9 @@ export namespace Telegram {
   export type ChatId = string | number
   export type MessageId = string
   export type ParsedMessage = {
-    type: "start" | "help" | "status" | "cancel" | "message"
-    message: string
+    type: "start" | "help" | "status" | "cancel" | "message" | "project_message" | "new_session"
+    message?: string
+    projectName?: string
   }
 }
 
@@ -132,7 +133,7 @@ export class TelegramClient {
     if (lower.startsWith("/help") || lower === "help") {
       return {
         type: "help",
-        message: "Commands: /start, /help, /status, /cancel, /new\n",
+        message: "Commands:\n- /project <name> <message> - Send message to specific project\n- /new_session <name> - Create new session for project\n- /status - Check status\n- /cancel - Cancel current session\n- /help - Show this help",
       }
     }
 
@@ -151,10 +152,22 @@ export class TelegramClient {
       }
     }
 
-    if (lower.startsWith("/new")) {
+    if (lower.startsWith("/project ")) {
+      const parts = trimmed.slice(9).trim().split(/\s+/)
+      const projectName = parts[0]
+      const message = parts.slice(1).join(" ")
       return {
-        type: "message",
-        message: trimmed,
+        type: "project_message",
+        projectName,
+        message,
+      }
+    }
+
+    if (lower.startsWith("/new_session ")) {
+      const projectName = trimmed.slice(13).trim()
+      return {
+        type: "new_session",
+        projectName,
       }
     }
 

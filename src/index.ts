@@ -346,8 +346,110 @@ async function globalPollingLoop() {
       if (update.message) {
         const parsed = firstProject.telegramClient.parseMessage(update.message.text)
         
+        // Handle /project <name> <message>
+        if (parsed.type === "project_message" && parsed.projectName && parsed.message) {
+          console.log("[TelegramPoll] Project message:", { 
+            projectName: parsed.projectName,
+            message: parsed.message.substring(0, 50) + (parsed.message.length > 50 ? "..." : "")
+          })
+          
+          // Find the specific project
+          const targetProject = Array.from(globalProjectRegistry.values()).find(
+            p => p.projectName === parsed.projectName
+          )
+          
+          if (!targetProject) {
+            // Send error message to Telegram
+            await firstProject.telegramClient.sendMessage({
+              chat_id: update.message.chat.id,
+              text: `❌ Project not found: ${parsed.projectName}\n\nAvailable projects:\n${Array.from(globalProjectRegistry.values()).map(p => `- ${p.projectName}`).join("\n")}`
+            })
+            continue
+          }
+          
+          const sessionId = targetProject.latestSessionId
+          
+          if (!sessionId) {
+            await firstProject.telegramClient.sendMessage({
+              chat_id: update.message.chat.id,
+              text: `❌ No active session for project: ${parsed.projectName}\n\nUse /new_session ${parsed.projectName} to create a new session.`
+            })
+            continue
+          }
+          
+          try {
+            // Send message to the specific project's session
+            await targetProject.input.client.session.prompt({
+              path: { id: sessionId },
+              body: {
+                parts: [{ type: "text", text: parsed.message }],
+              },
+            })
+            
+            // Send confirmation back to Telegram
+            await firstProject.telegramClient.sendMessage({
+              chat_id: update.message.chat.id,
+              text: `✅ Message sent to ${parsed.projectName} session`,
+            })
+          } catch (error) {
+            console.error(`[TelegramPoll] Error sending message to ${parsed.projectName}:`, error)
+            await firstProject.telegramClient.sendMessage({
+              chat_id: update.message.chat.id,
+              text: `❌ Failed to send message to ${parsed.projectName}: ${error.message}`
+            })
+          }
+          continue
+        }
+        
+        // Handle /new_session <project_name>
+        if (parsed.type === "new_session" && parsed.projectName) {
+          console.log("[TelegramPoll] New session request for:", parsed.projectName)
+          
+          // Find the specific project
+          const targetProject = Array.from(globalProjectRegistry.values()).find(
+            p => p.projectName === parsed.projectName
+          )
+          
+          if (!targetProject) {
+            await firstProject.telegramClient.sendMessage({
+              chat_id: update.message.chat.id,
+              text: `❌ Project not found: ${parsed.projectName}\n\nAvailable projects:\n${Array.from(globalProjectRegistry.values()).map(p => `- ${p.projectName}`).join("\n")}`
+            })
+            continue
+          }
+          
+          try {
+            // Create new session for the project
+            const result = await targetProject.input.client.session.create({
+              worktree: targetProject.directory,
+            })
+            
+            if (result.id) {
+              targetProject.latestSessionId = result.id
+              
+              await firstProject.telegramClient.sendMessage({
+                chat_id: update.message.chat.id,
+                text: `✅ New session created for ${parsed.projectName}\nSession ID: ${result.id}`
+              })
+            } else {
+              await firstProject.telegramClient.sendMessage({
+                chat_id: update.message.chat.id,
+                text: `❌ Failed to create session for ${parsed.projectName}`
+              })
+            }
+          } catch (error) {
+            console.error(`[TelegramPoll] Error creating session for ${parsed.projectName}:`, error)
+            await firstProject.telegramClient.sendMessage({
+              chat_id: update.message.chat.id,
+              text: `❌ Error creating session for ${parsed.projectName}: ${error.message}`
+            })
+          }
+          continue
+        }
+        
+        // Handle regular message (broadcast to all projects)
         if (parsed.type === "message") {
-          console.log("[TelegramPoll] Message received:", {
+          console.log("[TelegramPoll] Broadcast message:", {
             messageContent: parsed.message.substring(0, 50) + (parsed.message.length > 50 ? "..." : "")
           })
           
@@ -356,7 +458,6 @@ async function globalPollingLoop() {
             const sessionId = project.latestSessionId
             
             if (!sessionId) {
-              console.log(`[TelegramPoll] No active session for ${project.projectName}`)
               continue
             }
             
@@ -368,28 +469,16 @@ async function globalPollingLoop() {
                   parts: [{ type: "text", text: parsed.message }],
                 },
               })
-              
-              // Send confirmation back to Telegram
-              for (const chatId of project.chatIds) {
-                const escapedText = `[${project.telegramClient.escapeMarkdownV2(project.projectName)}] 📩 Message sent to OpenCode session`
-                await project.telegramClient.sendMessage({
-                  chat_id: chatId,
-                  text: escapedText,
-                  parse_mode: "MarkdownV2"
-                })
-              }
             } catch (error) {
               console.error(`[TelegramPoll] Error sending message to ${project.projectName}:`, error)
-              for (const chatId of project.chatIds) {
-                const escapedError = `[${project.telegramClient.escapeMarkdownV2(project.projectName)}] ❌ Failed: ${project.telegramClient.escapeMarkdownV2(error.message)}`
-                await project.telegramClient.sendMessage({
-                  chat_id: chatId,
-                  text: escapedError,
-                  parse_mode: "MarkdownV2"
-                })
-              }
             }
           }
+          
+          // Send confirmation
+          await firstProject.telegramClient.sendMessage({
+            chat_id: update.message.chat.id,
+            text: `✅ Message broadcast to ${globalProjectRegistry.size} project(s)`
+          })
         }
       }
     }
