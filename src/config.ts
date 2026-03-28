@@ -96,13 +96,11 @@ function parseProjectsConfig(): ProjectConfig[] {
  * Get project name from directory path (lookup or generate)
  */
 export function getProjectNameFromDirectory(path: string, config: Config): string {
-  // Find in config
   const project = config.projects?.find((p) => p.directory === path)
   if (project) return project.display_name
 
-  // Generate from last path segment
-  const lastSegment = path.split(/[\\/]/).pop() || "project"
-  return lastSegment.replace(/[^a-zA-Z0-9_-]/g, "-")
+  const lastSegment = path.split(/[\/]/).pop() || "project"
+  return lastSegment.replace(/\s+/g, "-").replace(/[^a-zA-Z0-9_\-]/g, "-")
 }
 
 /**

@@ -179,9 +179,32 @@ export class TelegramClient {
       }
     }
   }>> {
-    // Bot doesn't need getUpdates if it's already sending messages successfully
-    // Return empty array to skip polling
-    return []
+    if (!this.botToken) {
+      return []
+    }
+
+    try {
+      const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
+      
+      const response = await fetch(url, { method: "GET" })
+      
+      if (!response.ok) {
+        return []
+      }
+
+      const data = await response.json()
+      const updates = data.result || []
+      
+      if (updates.length > 0) {
+        this.lastUpdateId = Math.max(this.lastUpdateId, ...updates.map(u => u.update_id))
+      }
+      
+      return updates
+    } catch (error) {
+      console.error("[Telegram] Failed to get updates:", error)
+      return []
+    }
   }
 
   async setWebhook(webhookUrl: string, allowedUpdates?: string[]): Promise<boolean> {
