@@ -191,8 +191,11 @@ export class TelegramClient {
           })
           this.webhookDeleted = true
           console.log("[Telegram] Deleted existing webhook")
+          
+          // Wait a moment for Telegram to process webhook deletion
+          await new Promise(resolve => setTimeout(resolve, 500))
         } catch (e) {
-          // Ignore webhook deletion errors
+          console.error("[Telegram] Failed to delete webhook:", e)
         }
       }
       
@@ -202,7 +205,7 @@ export class TelegramClient {
       
       // Debug: Log token info (without exposing full token)
       const tokenPreview = this.botToken.substring(0, 15) + '***'
-      console.log(`[Telegram] getUpdates: token=${tokenPreview}, offset=${this.lastUpdateId + 1}`)
+      console.log(`[Telegram] getUpdates: token=${tokenPreview}, lastUpdateId=${this.lastUpdateId}`)
       
       const response = await fetch(
         url,
@@ -210,6 +213,11 @@ export class TelegramClient {
           method: "GET",
         },
       )
+      
+      if (response.status === 404) {
+        const errorText = await response.text()
+        console.error(`[Telegram] 404 error details:`, errorText.substring(0, 200))
+      }
       
       console.log(`[Telegram] getUpdates response: ${response.status}`)
 
