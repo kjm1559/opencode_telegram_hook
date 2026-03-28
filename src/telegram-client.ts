@@ -212,11 +212,10 @@ export class TelegramClient {
     // Always delete webhook to ensure clean state
     try {
       const webhookUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook`
-      console.log("[getUpdates] Deleting webhook:", webhookUrl.substring(0, 80) + "...")
+      console.log("[getUpdates] Deleting webhook...")
       const webhookResponse = await fetch(webhookUrl, { method: "POST" })
       const webhookData = await webhookResponse.json()
-      console.log("[getUpdates] Webhook delete response:", webhookResponse.status, webhookData.ok ? "success" : webhookData.description)
-      this.webhookDeleted = true
+      console.log("[getUpdates] Webhook delete:", webhookData.ok ? "✅ OK" : `❌ ${webhookData.description}`)
     } catch (e) {
       console.error("[getUpdates] Failed to delete webhook:", e)
     }
@@ -225,32 +224,19 @@ export class TelegramClient {
       const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
       
-      console.log("[getUpdates] Calling Telegram API:", {
-        lastUpdateId: this.lastUpdateId,
-        url: url.substring(0, 80) + "..."
-      })
+      console.log("[getUpdates] Calling getUpdates...")
       
       const response = await fetch(url, { method: "GET" })
+      const responseText = await response.text()
       
-      console.log("[getUpdates] Response status:", response.status)
+      console.log("[getUpdates] Response:", response.status, responseText.substring(0, 200))
       
       if (!response.ok) {
         console.error("[getUpdates] API error:", response.status)
-        
-        // Handle 404 - bot may not be started
-        if (response.status === 404) {
-          if (!this.botStartWarningShown) {
-            console.warn(
-              "[getUpdates] ⚠️  Bot not activated. Please send /start to @mjkim_cc_bot in Telegram."
-            )
-            this.botStartWarningShown = true
-          }
-        }
-        
         return []
       }
 
-      const data = await response.json()
+      const data = JSON.parse(responseText)
       const updates = data.result || []
       
       console.log("[getUpdates] Received updates:", updates.length)
@@ -259,10 +245,9 @@ export class TelegramClient {
         this.lastUpdateId = Math.max(this.lastUpdateId, ...updates.map(u => u.update_id))
         console.log("[getUpdates] Updated lastUpdateId to:", this.lastUpdateId)
         
-        // Log each update
         updates.forEach(u => {
           if (u.message) {
-            console.log("[getUpdates] Update details:", {
+            console.log("[getUpdates] Update:", {
               update_id: u.update_id,
               chat_id: u.message.chat.id,
               text: u.message.text.substring(0, 100)
