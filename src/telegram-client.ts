@@ -23,8 +23,9 @@ export class TelegramClient {
   private consecutive409Count: number = 0
   private readonly MAX_CONFLICT_RETRIES: number = 5
   private last409Time: number = 0
-  private readonly MIN_RETRY_INTERVAL: number = 5000 // 5 seconds between retries after 409
-  private webhookDeleted = false // Track if webhook has been deleted
+  private readonly MIN_RETRY_INTERVAL: number = 5000
+  private webhookDeleted = false
+  private botStartWarningShown = false
 
   constructor(botToken?: string) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
@@ -215,8 +216,14 @@ export class TelegramClient {
       )
       
       if (response.status === 404) {
-        const errorText = await response.text()
-        console.error(`[Telegram] 404 error details:`, errorText.substring(0, 200))
+        // Bot not started - user needs to send /start to activate it
+        if (!this.botStartWarningShown) {
+          console.warn(
+            "[Telegram] ⚠️  Bot not activated. Please send /start to @mjkim_cc_bot in Telegram to enable message reception."
+          )
+          this.botStartWarningShown = true
+        }
+        return []
       }
       
       console.log(`[Telegram] getUpdates response: ${response.status}`)
