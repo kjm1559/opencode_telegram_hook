@@ -214,6 +214,8 @@ export class TelegramClient {
     try {
       const webhookUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook`
       console.log("[getUpdates] Deleting webhook...")
+      console.log("[getUpdates] Bot token:", this.botToken.substring(0, 20) + "...")
+      console.log("[getUpdates] Webhook URL:", webhookUrl)
       const webhookResponse = await fetch(webhookUrl, { method: "POST" })
       const webhookData = await webhookResponse.json()
       console.log("[getUpdates] Webhook delete:", webhookData.ok ? "✅ OK" : `❌ ${webhookData.description}`)
@@ -227,6 +229,7 @@ export class TelegramClient {
       const offsetParam = this.initialized && this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
       
+      console.log("[getUpdates] Full URL:", url)
       console.log("[getUpdates] Calling getUpdates...", this.initialized ? `(offset=${this.lastUpdateId + 1})` : "(no offset)")
       
       const response = await fetch(url, { method: "GET" })
