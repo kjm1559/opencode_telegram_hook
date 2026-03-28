@@ -88,9 +88,9 @@ User Input              Plugin Processing              OpenCode Output
 
 ### 2. Message Routing
 
-- **With project prefix**: `[proj-name] your message` → routes to specific project
-- **Without prefix**: Uses last active project
-- **New sessions**: `/new [project-name]` creates fresh session
+- **Project-specific**: `/project <name> <message>` → routes to specific project's session
+- **Broadcast**: Regular messages → sent to all active projects
+- **New sessions**: `/new_session <name>` creates fresh session for project
 
 ### 3. Real-Time Updates
 
@@ -160,29 +160,79 @@ bun run build
 
 **To specific project:**
 ```
-[my-project] Add JWT authentication to the API
+/project opencode_telegram_hook show me the code structure
 ```
 
-**To last active project:**
+**Broadcast to all projects:**
 ```
-Fix the bug in the login handler
+Check the status of all projects
+```
+
+**Create new session:**
+```
+/new_session news_curation
 ```
 
 ### Commands
 
 ```
-/start                    Link Telegram to last active session
-/help                    Show all commands
-/new [project-name]      Create new session for project
-/status                  Show all active projects & sessions
-/cancel [project-name]   Stop work on specific project
-/projects               List all tracked projects
+/project <name> <message>   Send message to specific project's session
+/new_session <name>        Create new session for project
+/help                      Show all commands
+/status                    Show status
+/cancel                    Cancel current session
+Regular message            Broadcast to all active projects
 ```
 
 ### Examples
 
-#### Multiple Projects Example
+#### Project-Specific Message
 
+```
+/project backend-api add rate limiting
+│
+✅ Message sent to backend-api session
+```
+
+#### Broadcast to All Projects
+
+```
+Show me the current status
+│
+✅ Message broadcast to 3 project(s)
+```
+
+#### Creating New Session
+
+```
+/new_session my-new-feature
+│
+✅ New session created for my-new-feature
+   Session ID: ses_abc123
+   Directory: /home/project/my-new-feature
+```
+
+#### Error Handling
+
+```
+/project wrong-project-name help me
+│
+❌ Project not found: wrong-project-name
+
+Available projects:
+- opencode_telegram_hook
+- news_curation
+- coin_agent
+```
+
+#### No Active Session
+
+```
+/project coin_agent show code
+│
+❌ No active session for project: coin_agent
+
+Use /new_session coin_agent to create a new session.
 ```
 │ Telegram Chat |
 ├─────────────────────────────

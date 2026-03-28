@@ -249,3 +249,71 @@ bun test
 - [x] Telegram message not received
 
 **Last Updated:** 2025-03-28
+
+---
+
+## 2025-03-28: Project-Specific Commands
+
+### Problem 7: No Way to Target Specific Projects
+
+**Symptom:**
+- Messages sent to Telegram were broadcast to ALL projects
+- No way to send message to a specific project
+- No way to create sessions for individual projects
+
+**Root Cause:**
+- `globalPollingLoop()` only handled `type: "message"`
+- All messages broadcast to all projects in registry
+- No command parsing for project-specific actions
+
+**Solutions Applied:**
+
+1. **Add `/project <name> <message>` command**
+   - File: `src/telegram-client.ts`
+   - Parse command: `/project opencode_telegram_hook help me`
+   - Extract project name and message
+   - Send to specific project's session only
+
+2. **Add `/new_session <name>` command**
+   - File: `src/telegram-client.ts`
+   - Parse command: `/new_session coin_agent`
+   - Create new session for specified project
+   - Store session ID in `project.latestSessionId`
+
+3. **Update ParsedMessage type**
+   - Added `type: "project_message"` and `type: "new_session"`
+   - Added `projectName?: string` field
+   - Made `message?: string` optional
+
+4. **Implement command handlers in globalPollingLoop**
+   - File: `src/index.ts`
+   - Handle `/project` → find project → send to session
+   - Handle `/new_session` → create session → store ID
+   - Error handling with helpful messages
+   - List available projects on error
+
+**Verification:**
+```
+# Send message to specific project
+/project opencode_telegram_hook show me the code
+
+# Create new session
+/new_session news_curation
+
+# List available projects (on error)
+❌ Project not found: wrong_name
+Available projects:
+- opencode_telegram_hook
+- news_curation
+- coin_agent
+```
+
+**Command Reference:**
+- `/project <name> <message>` - Send message to specific project
+- `/new_session <name>` - Create new session for project
+- `/help` - Show command list
+- `/status` - Check status
+- `/cancel` - Cancel current session
+- Regular messages - Broadcast to all projects
+
+**Last Updated:** 2025-03-28
