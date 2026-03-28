@@ -183,6 +183,15 @@ export class TelegramClient {
     }
 
     try {
+      // First, delete any existing webhook to avoid conflicts
+      try {
+        await fetch(`https://api.telegram.org/bot${this.botToken}/deleteWebhook`, {
+          method: "POST",
+        })
+      } catch (e) {
+        // Ignore webhook deletion errors
+      }
+      
       // Don't use offset on 409 conflict - let Telegram determine the correct offset
       const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
