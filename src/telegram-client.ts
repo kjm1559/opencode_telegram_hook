@@ -185,12 +185,20 @@ export class TelegramClient {
     try {
       // Don't use offset on 409 conflict - let Telegram determine the correct offset
       const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
+      
+      // Debug: Log token info (without exposing full token)
+      const tokenPreview = this.botToken.substring(0, 15) + '***'
+      console.log(`[Telegram] getUpdates: token=${tokenPreview}, offset=${this.lastUpdateId + 1}`)
+      
       const response = await fetch(
-        `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`,
+        url,
         {
           method: "GET",
         },
       )
+      
+      console.log(`[Telegram] getUpdates response: ${response.status}`)
 
       if (!response.ok) {
         if (response.status === 409) {
