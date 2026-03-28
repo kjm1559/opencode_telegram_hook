@@ -27,6 +27,7 @@ export class TelegramClient {
   private readonly MIN_RETRY_INTERVAL: number = 5000
   private webhookDeleted = false
   private botStartWarningShown = false
+  private initialized = false
 
   constructor(botToken?: string) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
@@ -221,10 +222,12 @@ export class TelegramClient {
     }
 
     try {
-      const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
+      // First call: no offset to get all pending updates
+      // Subsequent calls: use lastUpdateId + 1
+      const offsetParam = this.initialized && this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
       
-      console.log("[getUpdates] Calling getUpdates...")
+      console.log("[getUpdates] Calling getUpdates...", this.initialized ? `(offset=${this.lastUpdateId + 1})` : "(no offset)")
       
       const response = await fetch(url, { method: "GET" })
       const responseText = await response.text()
@@ -243,6 +246,7 @@ export class TelegramClient {
       
       if (updates.length > 0) {
         this.lastUpdateId = Math.max(this.lastUpdateId, ...updates.map(u => u.update_id))
+        this.initialized = true
         console.log("[getUpdates] Updated lastUpdateId to:", this.lastUpdateId)
         
         updates.forEach(u => {
