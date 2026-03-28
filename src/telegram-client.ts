@@ -209,6 +209,19 @@ export class TelegramClient {
       return []
     }
 
+    // Delete webhook on first call to ensure clean state
+    if (!this.webhookDeleted) {
+      try {
+        const webhookUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook`
+        console.log("[getUpdates] Deleting webhook:", webhookUrl.substring(0, 80) + "...")
+        await fetch(webhookUrl, { method: "POST" })
+        this.webhookDeleted = true
+        console.log("[getUpdates] Webhook deleted successfully")
+      } catch (e) {
+        console.error("[getUpdates] Failed to delete webhook:", e)
+      }
+    }
+
     try {
       const offsetParam = this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
@@ -224,6 +237,17 @@ export class TelegramClient {
       
       if (!response.ok) {
         console.error("[getUpdates] API error:", response.status)
+        
+        // Handle 404 - bot may not be started
+        if (response.status === 404) {
+          if (!this.botStartWarningShown) {
+            console.warn(
+              "[getUpdates] ⚠️  Bot not activated. Please send /start to @mjkim_cc_bot in Telegram."
+            )
+            this.botStartWarningShown = true
+          }
+        }
+        
         return []
       }
 
