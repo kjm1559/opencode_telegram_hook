@@ -279,8 +279,8 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     config: async () => {
       const projectKey = directory
       
-      // Send startup message only for first project
-      if (!globalPollingStarted && defaultChatIds.length > 0) {
+      // Send startup message for each project
+      if (defaultChatIds.length > 0) {
         try {
           const startupText = `🔧 Telegram Plugin Loaded
 
@@ -294,9 +294,9 @@ Plugin is now active and ready to receive events from OpenCode.`
             text: escapedMessage,
             parse_mode: "MarkdownV2"
           })
-          console.log("[Telegram] Startup message sent successfully")
+          console.log(`[Telegram] Startup message sent for ${projectName}`)
         } catch (e) {
-          console.error("Failed to send startup message:", e)
+          console.error(`Failed to send startup message for ${projectName}:`, e)
         }
       }
       
