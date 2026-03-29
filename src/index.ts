@@ -9,13 +9,16 @@ import {
   type Config,
 } from "./config"
 
+// Shared TelegramClient singleton - single instance for all projects
+let sharedTelegramClient: TelegramClient | null = null
+let sharedTelegramClientInput: PluginInput | null = null
+
 // Global polling state - shared across all plugin instances
 let globalPollingStarted = false
 let globalPollingInterval: NodeJS.Timeout | null = null
 const globalProjectRegistry = new Map<string, {
   projectName: string
   directory: string
-  telegramClient: TelegramClient
   config: Config
   input: PluginInput
   chatIds: string[]
@@ -35,13 +38,19 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     ]),
   ).filter(Boolean)
 
-    const telegramClient = new TelegramClient(config.telegram_bot_token, input.$)
-    const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
-    const workSummarizer = new WorkSummarizer()
-    const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
-    
-    // Store references for use in config function
-    const handlers = { eventHandler, telegramClient }
+  // Initialize shared TelegramClient if not exists (singleton pattern)
+  if (!sharedTelegramClient) {
+    sharedTelegramClient = new TelegramClient(config.telegram_bot_token, input.$)
+    sharedTelegramClientInput = input
+  }
+
+  const telegramClient = sharedTelegramClient
+  const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
+  const workSummarizer = new WorkSummarizer()
+  const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
+  
+  // Store references for use in config function
+  const handlers = { eventHandler, telegramClient }
 
   let latestSessionId: string | null = null
 
@@ -281,7 +290,6 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         globalProjectRegistry.set(projectKey, {
           projectName,
           directory,
-          telegramClient,
           config,
           input,
           chatIds: defaultChatIds,
@@ -295,15 +303,11 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         console.log("[Telegram] Skipping - Project already registered:", projectName)
       }
       
-      // Only first registered project starts polling (shared memory)
-      const isFirstInstance = globalProjectRegistry.size === 1
-      
-      if (isFirstInstance && !globalPollingStarted) {
+      // Start polling on first registration (singleton pattern)
+      if (!globalPollingStarted) {
         globalPollingStarted = true
         globalPollingInterval = setInterval(globalPollingLoop, 3000)
-        console.log("[Telegram] Single polling thread started (3s interval) - First instance")
-      } else {
-        console.log("[Telegram] Skipping polling - Not first instance (registry size:", globalProjectRegistry.size, ")")
+        console.log("[Telegram] Single polling thread started (3s interval)")
       }
       
       console.log("\n===== [TelegramPlugin] Initialized ====")
@@ -322,24 +326,22 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
 // Global polling function - single instance for all projects
 async function globalPollingLoop() {
-  // Only one instance should poll - use the first registered project's client
-  const firstProject = globalProjectRegistry.values().next().value
-  if (!firstProject) {
+  if (!sharedTelegramClient || !sharedTelegramClientInput) {
     return
   }
   
   try {
-    const updates = await firstProject.telegramClient.getUpdates()
+    const updates = await sharedTelegramClient.getUpdates()
     
     for (const update of updates) {
       if (!update.message?.text) continue
       
-      const parsedMessage = firstProject.telegramClient.parseMessage(update.message.text)
+      const parsedMessage = sharedTelegramClient.parseMessage(update.message.text)
       const chatId = update.message.chat.id.toString()
       
       console.log(`[Polling] Received message from ${chatId}:`, parsedMessage)
       
-      await processTelegramMessage(parsedMessage, chatId, firstProject, updates[0]?.update_id)
+      await processTelegramMessage(parsedMessage, chatId, updates[0]?.update_id)
     }
   } catch (error) {
     console.error("[GlobalPolling] Error:", error)
@@ -349,10 +351,13 @@ async function globalPollingLoop() {
 async function processTelegramMessage(
   parsedMessage: any,
   chatId: string,
-  ctx: any,
   updateId?: number
 ) {
-  const { client } = ctx.input
+  if (!sharedTelegramClient || !sharedTelegramClientInput) {
+    return
+  }
+  
+  const { client } = sharedTelegramClientInput
   
   if (parsedMessage.type === "project_message" && parsedMessage.projectName) {
     const targetProject = Array.from(globalProjectRegistry.values()).find(
@@ -360,7 +365,7 @@ async function processTelegramMessage(
     )
     
     if (!targetProject) {
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `❌ Project not found: ${parsedMessage.projectName}\n\nAvailable projects:\n${Array.from(globalProjectRegistry.values()).map(p => `- ${p.projectName}`).join('\n')}`
       })
@@ -369,7 +374,7 @@ async function processTelegramMessage(
     
     const sessionId = targetProject.latestSessionId
     if (!sessionId) {
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `❌ No active session for project: ${parsedMessage.projectName}\n\nUse /new_session ${parsedMessage.projectName} to create a new session.`
       })
@@ -382,12 +387,12 @@ async function processTelegramMessage(
         body: { parts: [{ type: "text", text: parsedMessage.message }] }
       })
       
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `✅ Message sent to ${parsedMessage.projectName}\nSession: ${sessionId}`
       })
     } catch (error: any) {
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `❌ Failed to send message: ${error.message}`
       })
@@ -400,7 +405,7 @@ async function processTelegramMessage(
     )
     
     if (!targetProject) {
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `❌ Project not found: ${parsedMessage.projectName}`
       })
@@ -414,12 +419,12 @@ async function processTelegramMessage(
       
       targetProject.latestSessionId = result.id
       
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `✅ New session created for ${parsedMessage.projectName}\nSession ID: ${result.id}`
       })
     } catch (error: any) {
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `❌ Failed to create session: ${error.message}`
       })
@@ -427,11 +432,21 @@ async function processTelegramMessage(
   }
   
   else if (parsedMessage.type === "message" && parsedMessage.message) {
-    const sessionId = ctx.latestSessionId
-    if (!sessionId) {
-      await ctx.telegramClient.sendMessage({
+    // Find project by chatId or use first registered
+    const firstProject = Array.from(globalProjectRegistry.values())[0]
+    if (!firstProject) {
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
-        text: `❌ No active session for ${ctx.projectName}`
+        text: `❌ No projects registered`
+      })
+      return
+    }
+    
+    const sessionId = firstProject.latestSessionId
+    if (!sessionId) {
+      await sharedTelegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ No active session for ${firstProject.projectName}`
       })
       return
     }
@@ -442,12 +457,12 @@ async function processTelegramMessage(
         body: { parts: [{ type: "text", text: parsedMessage.message }] }
       })
       
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
-        text: `✅ Message sent to ${ctx.projectName}`
+        text: `✅ Message sent to ${firstProject.projectName}`
       })
     } catch (error: any) {
-      await ctx.telegramClient.sendMessage({
+      await sharedTelegramClient.sendMessage({
         chat_id: chatId,
         text: `❌ Failed to send message: ${error.message}`
       })

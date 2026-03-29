@@ -4,11 +4,18 @@
 
 ### Communication Status
 - ✅ **OpenCode → Telegram**: Working (sends events, notifications)
-- ❌ **Telegram → OpenCode**: Disabled (polling disabled due to 409 conflicts)
+- ✅ **Telegram → OpenCode**: Working (single polling with routing)
 
-**Reason**: Multiple plugin instances cause HTTP 409 conflicts when calling Telegram `getUpdates()`.
+**Architecture**: Single shared TelegramClient for all projects:
+- **One polling loop** → receives all messages
+- **Routing logic** → `/project <name>` directs to correct project/session
+- **Event handler** → OpenCode sessions → Telegram notifications (all projects share same client)
 
-**Solution**: Use external webhook server for bidirectional communication (see README.md).
+**Benefits**:
+- No 409 conflicts (single instance)
+- Clean routing by project name
+- Simplified state management
+- Backward compatible notifications
 
 ## Event Structure Reference
 
@@ -108,12 +115,23 @@ git push
 
 ### Key Components
 
-**Global Registry**:
+**Shared TelegramClient Singleton**:
+```typescript
+let sharedTelegramClient: TelegramClient | null = null
+let sharedTelegramClientInput: PluginInput | null = null
+
+// Initialize once (first plugin instance)
+if (!sharedTelegramClient) {
+  sharedTelegramClient = new TelegramClient(config.telegram_bot_token, input.$)
+  sharedTelegramClientInput = input
+}
+```
+
+**Global Registry** (simplified, no telegramClient per project):
 ```typescript
 const globalProjectRegistry = new Map<string, {
   projectName: string
   directory: string
-  telegramClient: TelegramClient
   config: Config
   input: PluginInput
   chatIds: string[]
@@ -122,14 +140,18 @@ const globalProjectRegistry = new Map<string, {
 }>>()
 ```
 
-**Polling Status**: DISABLED
-- Multiple instances cause 409 conflicts
-- Only first instance should poll (but currently disabled entirely)
+**Single Polling Loop**:
+```typescript
+if (!globalPollingStarted) {
+  globalPollingStarted = true
+  setInterval(globalPollingLoop, 3000) // 3s interval
+}
+```
 
 **Event Handling**:
 - Extract session_id from `event.properties.info`
 - Format messages with project tags
-- Send to Telegram via `telegramClient.sendMessage()`
+- Send to Telegram via `sharedTelegramClient.sendMessage()`
 
 ## Problem History & Solutions
 
@@ -172,18 +194,19 @@ bun test
 
 **현재 상태**:
 - ✅ OpenCode → Telegram: Working
-- ❌ Telegram → OpenCode: Disabled
-- ✅ 409 에러: 해결 (polling 비활성화)
+- ✅ Telegram → OpenCode: Working
+- ✅ 409 에러: 해결 (단일 인스턴스 패턴)
 
 상세한 문제 증상, 근본 원인, 해결책은 `HISTORY.md` 를 참조하세요.
 
 ## Next Steps
 
 ### For Users
-- Use plugin for **notifications only** (OpenCode → Telegram)
-- For bidirectional communication, see **README.md → External Webhook Server**
+- ✅ **Bidirectional communication** works out of the box
+- Use `/project <name> <message>` to send messages to specific projects
+- Use `/new_session <name>` to create new sessions
 
 ### For Developers
-- Fix multiple instance issue (share state across instances)
-- Or implement external webhook server
+- Architecture refactored to singleton pattern
+- No need for external webhook server (unless you want to)
 - Update documentation when design changes

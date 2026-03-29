@@ -15,10 +15,10 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 - ✅ **OpenCode → Telegram**: Working (event-driven, real-time)
 - ✅ **Telegram → OpenCode**: Working (single polling thread with routing)
 
-**Architecture**: Hybrid (Event-driven + Polling)
-- **OpenCode → Telegram**: Each project has its own event handler (async, immediate)
-- **Telegram → OpenCode**: Single polling thread routes messages by project name to each session
-- **No 409 conflicts**: File-based lock ensures only one instance polls
+**Architecture**: Single shared TelegramClient for all projects:
+- **OpenCode → Telegram**: Event-driven notifications (all projects share client)
+- **Telegram → OpenCode**: Single polling thread routes messages by project name
+- **No 409 conflicts**: Singleton pattern ensures one instance only
 
 **Commands**:
 - `/project <name> <message>` - Send message to specific project's session
@@ -26,11 +26,41 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 
 ## Architecture
 
-### N:1 Project-to-Telegram Model (One-Way)
+### N:1 Project-to-Telegram Model (Bidirectional)
 
-**Important**: Due to multiple plugin instances causing HTTP 409 conflicts, **Telegram message reception is disabled**. Only OpenCode → Telegram notifications work.
+**Architecture**: Single shared TelegramClient for all projects.
 
 ```
+┌──┬───────┬─────┬────────────────────────────────────────────────────┐
+│   │       │     │              OpenCode Projects                    │
+│   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
+│   │       │     │  │Proj A  │  │Proj B  │  │Proj C  │              │
+│   │       │     │  │  /a    │  │  /b    │  │  /c    │              │
+│   │       │     │  └───┬───┘  └───┬───┘  └───┬───┘              │
+│   │       │     │      │          │          │                   │
+│   │       │     │      └────┬─────┴───┬──────┘                   │
+│   │       │     │           │         │                          │
+│   │       │     │     Events & Notifications                     │
+│   │       │     │           │         │                          │
+└──┴───────┴────┴───────────┬─┴───┴───┘                   │
+                            │                            │
+                            ▼ (Bidirectional)            │
+┌─────────────────────────────────────────────────────────────────┤
+│                        Telegram Chat                            │
+│  ┌───────────────────────────────────────────────────────┐       │
+│  │ [Project A] 🤖 Agent: Understanding requirements...   │       │
+│  │ [Project B] ✅ Tests: 8/8 passed                      │       │
+│  │ [Project C] 🔧 Edited src/auth.ts                     │       │
+│  │ 👤 User: /project A deploy to prod                    │       │
+│  │ [Project A] ✅ Deployed successfully                  │       │
+│  └───────────────────────────────────────────────────────┘       │
+└──────────────────────────────────────────────────────────┘
+```
+
+**Key Changes**:
+- **Single TelegramClient**: All projects share one client instance
+- **One polling loop**: Receives messages, routes by `/project <name>` command
+- **No 409 conflicts**: Singleton pattern prevents multiple instances
 ┌──┬───────┬─────┬────────────────────────────────────────────────────┐
 │   │       │     │              OpenCode Projects                    │
 │   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
@@ -55,7 +85,7 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Message Flow (One-Way)
+### Message Flow (Bidirectional)
 
 ```
 OpenCode Events          Plugin Processing              Telegram Output
@@ -72,9 +102,19 @@ Agent works ──────────▶  Extract session_id ────�
                             │                           │
                             ▼ Display in Chat           │
                      [Project A] thinking...            │
+                            │                           │
+                            │                           │
+User message ◀───◀───◀───◀──┤                           │
+                            │                           │
+                            ▼ Parse /project command    │
+                     Target: Project A                  │
+                            │                           │
+                            ▼ Route to session          │
+                     Forward to OpenCode                │
+                            │                           │
+                            ▼ Agent processes           │
+                     [Project A] Received command...    │
 ```
-
-**For Bidirectional Communication**: See [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section.
 
 ## Key Features
 
@@ -158,31 +198,42 @@ bun run build
 
 ## Usage
 
-### ⚠️ Current Limitation
-
-**Telegram message reception is disabled** due to HTTP 409 conflicts from multiple plugin instances. Only OpenCode → Telegram notifications work.
-
 ### Receiving Notifications
 
 You will receive real-time notifications from OpenCode:
 
-**Project-Specific Updates:**
+**Project-Specific Updates**:
 ```
 [opencode_telegram_hook] 🤖 Agent: Understanding requirements...
 [opencode_telegram_hook] 🔧 Edited src/index.ts
 [opencode_telegram_hook] ✅ Tests: 8/8 passed
 ```
 
-**Multiple Projects:**
+**Multiple Projects**:
 ```
 [news_curation] 🤖 Fetching latest news...
 [coin_agent] 📊 Analyzing market data...
 [opencode_telegram_hook] 🔧 Creating test file...
 ```
 
-### For Bidirectional Communication
+### Sending Messages to OpenCode
 
-To send messages to OpenCode sessions from Telegram, you need an **external webhook server**. See [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section.
+**Send to specific project**:
+```
+/project opencode_telegram_hook hello agent
+```
+
+**Create new session**:
+```
+/new_session news_curation
+```
+
+**Response**:
+```
+✅ New session created for news_curation
+Session ID: ses_abc123
+
+Send your task request.
 │
 ✅ Created new session for "my-new-feature"
    Session: ses_abc123
@@ -202,48 +253,6 @@ Send your task request.
   • data-pipeline (ses_ghi78) — Completed
   
 Total: 3 projects, 2 active sessions
-```
-
-## Implementation Details
-
-### Project Identification
-
-Projects are identified by their **absolute directory path**. The plugin:
-
-1. Maps `project-display-name ↔ directory-path` in config
-2. Tracks `directory-path ↔ active-session-id` per project
-3. Routes messages using project name → directory → session chain
-
-### State Management
-
-```typescript
-// Project configuration
-projectConfig: Map<string, {
-  name: string,
-  directory: string,
-  display_name: string  // For Telegram tags
-}>
-
-// Runtime state
-projectSessions: Map<string, {
-  sessionId: string
-  lastActivity: number
-  telegramChatId: string
-}>
-```
-
-### Event Processing
-
-```
-OpenCode Event (with directory) 
-    ↓
-Find project by directory
-    ↓
-Get project display name
-    ↓
-Format: `[project-name] event-details`
-    ↓
-Send to Telegram
 ```
 
 ## Development
