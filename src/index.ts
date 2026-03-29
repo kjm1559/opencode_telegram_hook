@@ -3,6 +3,92 @@ import { TelegramClient } from "./telegram-client"
 import { EventHandler } from "./event-handler"
 import { loadConfig, getProjectNameFromDirectory, type Config } from "./config"
 
+// Module-level state - shared across all plugin instances
+let sharedTelegramClient: TelegramClient | null = null
+const projectRegistry = new Map<string, {
+  projectName: string
+  directory: string
+  client: any
+  telegramClient: TelegramClient
+  chatIds: string[]
+}>()
+
+// Initialize polling immediately when plugin loads
+let pollingInterval: NodeJS.Timeout | null = null
+
+// Route message to specific project
+async function routeToSession(projectName: string, message: string, chatId: string) {
+  const project = projectRegistry.get(projectName)
+  if (!project) {
+    await sharedTelegramClient?.sendMessage({
+      chat_id: chatId,
+      text: `❌ Project not found: ${projectName}`
+    })
+    return
+  }
+  
+  try {
+    const sessionsResult = await project.client.session.list({})
+    const sessions = sessionsResult?.result || []
+    const lastSession = sessions[0]
+    
+    if (!lastSession?.id) {
+      await project.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `[${projectName}] ❌ No active session. Create one first.`
+      })
+      return
+    }
+    
+    await project.client.session.prompt({
+      path: { id: lastSession.id },
+      body: { parts: [{ type: "text", text: message }] }
+    })
+    
+    await project.telegramClient.sendMessage({
+      chat_id: chatId,
+      text: `[${projectName}] ✅ Message sent to session ${lastSession.id}`
+    })
+  } catch (error: any) {
+    console.error(`[Route] Error for ${projectName}:`, error.message)
+    await project.telegramClient.sendMessage({
+      chat_id: chatId,
+      text: `[${projectName}] ❌ Error: ${error.message}`
+    })
+  }
+}
+
+// Single polling handler - routes messages to projects
+async function handlePolling() {
+  if (!sharedTelegramClient) return
+  
+  try {
+    const updates = await sharedTelegramClient.getUpdates()
+    
+    for (const update of updates) {
+      if (!update.message?.text) continue
+      
+      const parsed = sharedTelegramClient.parseMessage(update.message.text)
+      const chatId = update.message.chat.id.toString()
+      
+      console.log(`[Polling] Received:`, parsed)
+      
+      if (parsed.type === "project_message" && parsed.projectName && parsed.message) {
+        await routeToSession(parsed.projectName, parsed.message, chatId)
+      } else if (parsed.type === "message" && parsed.message) {
+        const firstProject = projectRegistry.values().next().value
+        if (firstProject) {
+          await routeToSession(firstProject.projectName, parsed.message, chatId)
+        }
+      }
+    }
+  } catch (error: any) {
+    if (!error.message?.includes("409")) {
+      console.error("[Polling] Error:", error.message)
+    }
+  }
+}
+
 export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const { client, directory } = input
   const config = loadConfig()
@@ -15,71 +101,24 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     ]),
   ).filter(Boolean)
 
-  const telegramClient = new TelegramClient(config.telegram_bot_token, input.$)
+  // Initialize shared TelegramClient once
+  if (!sharedTelegramClient) {
+    sharedTelegramClient = new TelegramClient(config.telegram_bot_token, input.$)
+    // Start polling immediately
+    pollingInterval = setInterval(handlePolling, 3000).unref()
+  }
+  
+  const telegramClient = sharedTelegramClient
   const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
 
-  // Simple polling - no state management
-  setInterval(async () => {
-    try {
-      const updates = await telegramClient.getUpdates()
-      
-      for (const update of updates) {
-        if (!update.message?.text) continue
-        
-        const parsed = telegramClient.parseMessage(update.message.text)
-        const chatId = update.message.chat.id.toString()
-        
-        console.log(`[Telegram] Received:`, parsed)
-        
-        if (parsed.type === "project_message" && parsed.message) {
-          // Forward to OpenCode via HTTP API
-          await forwardToSession(client, parsed.message, chatId, projectName)
-        } else if (parsed.type === "message" && parsed.message) {
-          // Forward to current session
-          await forwardToSession(client, parsed.message, chatId, projectName)
-        }
-      }
-    } catch (error: any) {
-      // Ignore 409 conflicts (multiple instances) silently
-      if (!error.message?.includes("409")) {
-        console.error("[Telegram Polling] Error:", error.message)
-      }
-    }
-  }, 3000).unref()
-
-  async function forwardToSession(client: any, message: string, chatId: string, projectName: string) {
-    try {
-      // Get sessions via OpenCode client API
-      const sessionsResult = await client.session.list({})
-      const sessions = sessionsResult?.result || []
-      const lastSession = sessions[0]
-      
-      if (!lastSession?.id) {
-        await telegramClient.sendMessage({
-          chat_id: chatId,
-          text: `[${projectName}] ❌ No active session. Create one first.`
-        })
-        return
-      }
-      
-      // Forward message via OpenCode client API
-      await client.session.prompt({
-        path: { id: lastSession.id },
-        body: { parts: [{ type: "text", text: message }] }
-      })
-      
-      await telegramClient.sendMessage({
-        chat_id: chatId,
-        text: `[${projectName}] ✅ Message sent to session ${lastSession.id}`
-      })
-    } catch (error: any) {
-      console.error(`[Telegram] Forward error:`, error.message)
-      await telegramClient.sendMessage({
-        chat_id: chatId,
-        text: `[${projectName}] ❌ Error: ${error.message}`
-      })
-    }
-  }
+  // Register this project for routing
+  projectRegistry.set(projectName, {
+    projectName,
+    directory,
+    client,
+    telegramClient,
+    chatIds
+  })
 
   return {
     event: async ({ event }) => {
@@ -91,7 +130,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     config: async () => {
       console.log(`[TelegramPlugin] Initialized for ${projectName}`)
       console.log(`  Chat IDs: ${chatIds}`)
-      console.log(`  Polling started (3s interval)`)
+      console.log(`  Registered projects: ${Array.from(projectRegistry.keys()).join(', ')}`)
     }
   }
 }
