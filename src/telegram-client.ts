@@ -3,7 +3,7 @@ import z from "zod"
 const TelegramMessageSchema = z.object({
   chat_id: z.union([z.string(), z.number()]),
   text: z.string(),
-  parse_mode: z.literal("MarkdownV2").optional(),
+  parse_mode: z.union([z.literal("HTML"), z.literal("MarkdownV2")]).optional(),
   reply_to_message_id: z.string().optional(),
 })
 
@@ -39,26 +39,14 @@ export class TelegramClient {
     return this.lastUpdateId
   }
 
-  escapeMarkdownV2(text: string): string {
+  escapeHtml(text: string): string {
     let result = text
     
-    result = result.replace(/\\/g, '\\\\')
-    result = result.replace(/\[/g, '\\[')
-    result = result.replace(/\]/g, '\\]')
-    result = result.replace(/\(/g, '\\(')
-    result = result.replace(/\)/g, '\\)')
-    result = result.replace(/~/g, '\\~')
-    result = result.replace(/`/g, '\\`')
-    result = result.replace(/>/g, '\\>')
-    result = result.replace(/#/g, '\\#')
-    result = result.replace(/\+/g, '\\+')
-    result = result.replace(/-/g, '\\-')
-    result = result.replace(/=/g, '\\=')
-    result = result.replace(/\|/g, '\\|')
-    result = result.replace(/\{/g, '\\{')
-    result = result.replace(/\}/g, '\\}')
-    result = result.replace(/\./g, '\\.')
-    result = result.replace(/!/g, '\\!')
+    result = result.replace(/&/g, '&amp;')
+    result = result.replace(/</g, '&lt;')
+    result = result.replace(/>/g, '&gt;')
+    result = result.replace(/"/g, '&quot;')
+    result = result.replace(/'/g, '&#39;')
     
     return result
   }

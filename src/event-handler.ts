@@ -96,7 +96,7 @@ export class EventHandler {
 
 ---
 `
-      return this.escapeMarkdownV2(message)
+      return this.escapeHtml(message)
     }
 
     if (event.type === "tool.execute.after") {
@@ -111,7 +111,7 @@ export class EventHandler {
         }
 
         lines.push("\n---\n")
-        return this.escapeMarkdownV2(lines.join("\n\n"))
+        return this.escapeHtml(lines.join("\n\n"))
     }
 
     if (event.type === "command.executed") {
@@ -123,7 +123,7 @@ export class EventHandler {
       }
 
       lines.push("\n---\n")
-      return this.escapeMarkdownV2(lines.join("\n\n"))
+      return this.escapeHtml(lines.join("\n\n"))
     }
 
     if (event.type === "lsp.client.diagnostics") {
@@ -139,7 +139,7 @@ export class EventHandler {
         `\n---\n`,
       ]
 
-      return this.escapeMarkdownV2(lines.join("\n"))
+      return this.escapeHtml(lines.join("\n"))
     }
 
     if (event.type === "session.started") {
@@ -156,7 +156,7 @@ Worktree: ${worktree.substring(0, 30)}...
 
 ---
 `
-        return this.escapeMarkdownV2(message)
+        return this.escapeHtml(message)
     }
 
     if (event.type === "session.status") {
@@ -166,7 +166,7 @@ Worktree: ${worktree.substring(0, 30)}...
 
 ---
 `
-        return this.escapeMarkdownV2(message)
+        return this.escapeHtml(message)
     }
 
     if (event.type === "session.diff") {
@@ -181,7 +181,7 @@ ${changes}
 
 ---
 `
-        return this.escapeMarkdownV2(message)
+        return this.escapeHtml(message)
     }
 
     if (event.type === "session.updated") {
@@ -206,7 +206,7 @@ ${changes}
         }
         
         lines.push("\n\n---\n")
-        return this.escapeMarkdownV2(lines.join("\n"))
+        return this.escapeHtml(lines.join("\n"))
     }
 
     if (event.type === "session.completed") {
@@ -216,14 +216,14 @@ See summary below for details.
 
 ---
 `
-      return this.escapeMarkdownV2(message)
+      return this.escapeHtml(message)
     }
 
     const message = `[${projectName}] [${event.type}]\n${event.title || "No title"}
 
 ---
 `
-    return this.escapeMarkdownV2(message)
+    return this.escapeHtml(message)
   }
 
   private formatMessageUpdate(event: any, projectName: string): string | null {
@@ -331,8 +331,8 @@ See summary below for details.
       if (role === "assistant") {
         const tokens = info.tokens?.total || 0
         const cost = info.cost || 0
-        const path = this.escapeMarkdownV2(info.path || "unknown path")
-        const escapedProjectName = this.escapeMarkdownV2(projectName)
+        const path = this.escapeHtml(info.path || "unknown path")
+        const escapedProjectName = this.escapeHtml(projectName)
         
         return `[${escapedProjectName}] 🤖 Agent completed message\n\n\`\`\`\nPath: ${path}\nTokens: ${tokens}\nCost: $${cost.toFixed(4)}\n\`\`\`\n\n---\n`
       }
@@ -367,34 +367,15 @@ See summary below for details.
       ? content.substring(0, maxLength) + "...\n\n(truncated)"
       : content
     
-    const escaped = this.escapeMarkdownV2(truncated)
-    return `[${this.escapeMarkdownV2(projectName)}] ${sender}:\n\n${escaped}\n\n---\n`
+    const escaped = this.escapeHtml(truncated)
+    return `[${this.escapeHtml(projectName)}] ${sender}:\n\n${escaped}\n\n---\n`
   }
 
-  private escapeMarkdownV2(text: string): string {
+  private escapeHtml(text: string): string {
     let result = text
-    
-    // Escape backslash FIRST
-    result = result.replace(/\\/g, '\\\\')
-    
-    // Escape special characters EXCEPT * and _ (used for markdown formatting)
-    result = result.replace(/\[/g, '\\[')
-    result = result.replace(/\]/g, '\\]')
-    result = result.replace(/\(/g, '\\(')
-    result = result.replace(/\)/g, '\\)')
-    result = result.replace(/~/g, '\\~')
-    result = result.replace(/`/g, '\\`')
-    result = result.replace(/>/g, '\\>')
-    result = result.replace(/#/g, '\\#')
-    result = result.replace(/\+/g, '\\+')
-    result = result.replace(/-/g, '\\-')
-    result = result.replace(/=/g, '\\=')
-    result = result.replace(/\|/g, '\\|')
-    result = result.replace(/\{/g, '\\{')
-    result = result.replace(/\}/g, '\\}')
-    result = result.replace(/\./g, '\\.')
-    result = result.replace(/!/g, '\\!')
-    
+    result = result.replace(/\&/g, '&amp;')
+    result = result.replace(/</g, '&lt;')
+    result = result.replace(/>/g, '&gt;')
     return result
   }
 
@@ -411,6 +392,7 @@ See summary below for details.
     return await this.telegramClient({
       chat_id: chatId,
       text,
+      parse_mode: "HTML",
     })
   }
 }
