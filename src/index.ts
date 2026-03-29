@@ -298,15 +298,21 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       // File-based lock to ensure only one instance polls across all plugin instances
       const lockFile = "/tmp/telegram_plugin.lock"
       const fs = await import("fs/promises")
+      
+      // Wait a bit to avoid race conditions
+      await new Promise(resolve => setTimeout(resolve, 100))
+      
       const hasLock = await fs.access(lockFile).then(() => true).catch(() => false)
       
       if (!hasLock && !globalPollingStarted) {
         try {
-          await fs.writeFile(lockFile, process.pid.toString())
+          // Try to create lock file atomically
+          await fs.writeFile(lockFile, `${process.pid}:${Date.now()}`, { flag: 'wx' })
           globalPollingStarted = true
-          globalPollingInterval = setInterval(globalPollingLoop, 3000)
-          console.log("[Telegram] Global polling started (3s interval) - Lock acquired (PID:", process.pid, ")")
+          globalPollingInterval = setInterval(globalPollingLoop, 5000) // 5 초마다 polling
+          console.log("[Telegram] Global polling started (5s interval) - Lock acquired (PID:", process.pid, ")")
         } catch (error: any) {
+          // Lock file already exists or other error
           console.log("[Telegram] Lock already exists - Skipping polling")
         }
       } else if (hasLock) {
