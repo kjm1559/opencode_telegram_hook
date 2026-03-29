@@ -20,6 +20,7 @@ export namespace Telegram {
 
 export class TelegramClient {
   private readonly botToken: string
+  private readonly shell: any
   private lastUpdateId: number = 0
   private consecutive409Count: number = 0
   private readonly MAX_CONFLICT_RETRIES: number = 5
@@ -29,8 +30,9 @@ export class TelegramClient {
   private botStartWarningShown = false
   private initialized = false
 
-  constructor(botToken?: string) {
+  constructor(botToken?: string, shell?: any) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
+    this.shell = shell
   }
 
   getLastUpdateId(): number {
@@ -70,45 +72,29 @@ export class TelegramClient {
       return false
     }
 
-    try {
-      const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`
+    if (!this.shell) {
+      console.error("[Telegram] BunShell not available")
+      return false
+    }
 
-      const payload: any = {
+    try {
+      const payload = {
         chat_id: params.chat_id,
         text: params.text,
         reply_to_message_id: params.reply_to_message_id,
       }
       
-      // Only add parse_mode if explicitly provided
       if (params.parse_mode) {
-        payload.parse_mode = params.parse_mode
+        (payload as any).parse_mode = params.parse_mode
       }
 
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      })
-
-      if (!response.ok) {
-        const errorText = await response.text()
-        
-        if (response.status === 404) {
-          // 404: Bot not found or invalid token
-          console.error(
-            `[Telegram] 404 Not Found - Check your bot token. ` +
-            `Error: ${errorText.substring(0, 100)}`
-          )
-        } else if (response.status === 400) {
-          // 400: Bad Request - usually invalid chat_id or message format
-          console.error(
-            `[Telegram] 400 Bad Request - Check chat_id and message format. ` +
-            `Error: ${errorText.substring(0, 200)}`
-          )
-        } else {
-          console.error(`[Telegram] API error: ${response.status} ${errorText.substring(0, 100)}`)
-        }
-        
+      const jsonData = JSON.stringify(payload)
+      const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`
+      
+      const result = await this.shell`curl -s -X POST ${url} -H "Content-Type: application/json" -d ${jsonData}`.nothrow().json()
+      
+      if (!result || !result.ok) {
+        console.error(`[Telegram] sendMessage failed: ${result?.error || result?.result || 'unknown error'}`)
         return false
       }
 
@@ -206,66 +192,40 @@ export class TelegramClient {
     }
   }>> {
     if (!this.botToken) {
-      console.log("[getUpdates] No bot token")
+      console.error("[Telegram] BOT_TOKEN not configured")
       return []
     }
 
-    // Always delete webhook to ensure clean state
-    try {
-      const webhookUrl = `https://api.telegram.org/bot${this.botToken}/deleteWebhook`
-      console.log("[getUpdates] Deleting webhook...")
-      console.log("[getUpdates] Bot token:", this.botToken.substring(0, 20) + "...")
-      console.log("[getUpdates] Webhook URL:", webhookUrl)
-      const webhookResponse = await fetch(webhookUrl, { method: "POST" })
-      const webhookData = await webhookResponse.json()
-      console.log("[getUpdates] Webhook delete:", webhookData.ok ? "✅ OK" : `❌ ${webhookData.description}`)
-    } catch (e) {
-      console.error("[getUpdates] Failed to delete webhook:", e)
+    if (!this.shell) {
+      console.warn("[Telegram] BunShell not available, cannot receive messages")
+      return []
     }
 
     try {
-      // First call: no offset to get all pending updates
-      // Subsequent calls: use lastUpdateId + 1
-      const offsetParam = this.initialized && this.lastUpdateId > 0 ? `&offset=${this.lastUpdateId + 1}` : ''
-      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates${offsetParam}&timeout=30`
+      const offset = this.lastUpdateId + 1
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`
       
-      console.log("[getUpdates] Full URL:", url)
-      console.log("[getUpdates] Calling getUpdates...", this.initialized ? `(offset=${this.lastUpdateId + 1})` : "(no offset)")
+      const result = await this.shell`curl -s -X POST ${url}`.nothrow().json()
       
-      const response = await fetch(url, { method: "GET" })
-      const responseText = await response.text()
-      
-      console.log("[getUpdates] Response:", response.status, responseText.substring(0, 200))
-      
-      if (!response.ok) {
-        console.error("[getUpdates] API error:", response.status)
+      if (!result || !result.ok) {
+        console.error(`[Telegram] getUpdates failed: ${result?.error || 'unknown error'}`)
         return []
       }
 
-      const data = JSON.parse(responseText)
-      const updates = data.result || []
-      
-      console.log("[getUpdates] Received updates:", updates.length)
-      
-      if (updates.length > 0) {
-        this.lastUpdateId = Math.max(this.lastUpdateId, ...updates.map(u => u.update_id))
-        this.initialized = true
-        console.log("[getUpdates] Updated lastUpdateId to:", this.lastUpdateId)
-        
-        updates.forEach(u => {
-          if (u.message) {
-            console.log("[getUpdates] Update:", {
-              update_id: u.update_id,
-              chat_id: u.message.chat.id,
-              text: u.message.text.substring(0, 100)
-            })
+      if (result.ok && Array.isArray(result.result)) {
+        for (const update of result.result) {
+          if (update.update_id > this.lastUpdateId) {
+            this.lastUpdateId = update.update_id
           }
-        })
+        }
+        
+        console.log(`[Telegram] Received ${result.result.length} update(s)`)
+        return result.result
       }
-      
-      return updates
+
+      return []
     } catch (error) {
-      console.error("[getUpdates] Error:", error)
+      console.error("[Telegram] Failed to get updates:", error)
       return []
     }
   }

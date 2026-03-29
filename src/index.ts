@@ -35,7 +35,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     ]),
   ).filter(Boolean)
 
-    const telegramClient = new TelegramClient(config.telegram_bot_token)
+    const telegramClient = new TelegramClient(config.telegram_bot_token, input.$)
     const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
     const workSummarizer = new WorkSummarizer()
     const messageRelay = new MessageRelay({ client, telegramClient: telegramClient.sendMessage.bind(telegramClient), config })
@@ -330,157 +330,132 @@ Plugin is now active and ready to receive events from OpenCode.`
 
 // Global polling function - single instance for all projects
 async function globalPollingLoop() {
-  if (globalProjectRegistry.size === 0) return
-  
-  // Use the first registered telegram client for polling
-  const firstProject = globalProjectRegistry.values().next().value
-  if (!firstProject) return
-  
   try {
-    const updates = await firstProject.telegramClient.getUpdates()
-    
-    for (const update of updates) {
-      if (update.message) {
-        const parsed = firstProject.telegramClient.parseMessage(update.message.text)
+    for (const [projectKey, ctx] of globalProjectRegistry.entries()) {
+      const updates = await ctx.telegramClient.getUpdates()
+      
+      for (const update of updates) {
+        if (!update.message?.text) continue
         
-        // Handle /project <name> <message>
-        if (parsed.type === "project_message" && parsed.projectName && parsed.message) {
-          console.log("[TelegramPoll] Project message:", { 
-            projectName: parsed.projectName,
-            message: parsed.message.substring(0, 50) + (parsed.message.length > 50 ? "..." : "")
-          })
-          
-          // Find the specific project
-          const targetProject = Array.from(globalProjectRegistry.values()).find(
-            p => p.projectName === parsed.projectName
-          )
-          
-          if (!targetProject) {
-            // Send error message to Telegram
-            await firstProject.telegramClient.sendMessage({
-              chat_id: update.message.chat.id,
-              text: `❌ Project not found: ${parsed.projectName}\n\nAvailable projects:\n${Array.from(globalProjectRegistry.values()).map(p => `- ${p.projectName}`).join("\n")}`
-            })
-            continue
-          }
-          
-          const sessionId = targetProject.latestSessionId
-          
-          if (!sessionId) {
-            await firstProject.telegramClient.sendMessage({
-              chat_id: update.message.chat.id,
-              text: `❌ No active session for project: ${parsed.projectName}\n\nUse /new_session ${parsed.projectName} to create a new session.`
-            })
-            continue
-          }
-          
-          try {
-            // Send message to the specific project's session
-            await targetProject.input.client.session.prompt({
-              path: { id: sessionId },
-              body: {
-                parts: [{ type: "text", text: parsed.message }],
-              },
-            })
-            
-              // Send confirmation back to Telegram
-              await firstProject.telegramClient.sendMessage({
-                chat_id: update.message.chat.id,
-                text: `✅ Message sent to ${parsed.projectName} session`,
-              })
-          } catch (error) {
-            console.error(`[TelegramPoll] Error sending message to ${parsed.projectName}:`, error)
-            await firstProject.telegramClient.sendMessage({
-              chat_id: update.message.chat.id,
-              text: `❌ Failed to send message to ${parsed.projectName}: ${error.message}`
-            })
-          }
-          continue
-        }
+        const parsedMessage = ctx.telegramClient.parseMessage(update.message.text)
+        const chatId = update.message.chat.id.toString()
         
-        // Handle /new_session <project_name>
-        if (parsed.type === "new_session" && parsed.projectName) {
-          console.log("[TelegramPoll] New session request for:", parsed.projectName)
-          
-          // Find the specific project
-          const targetProject = Array.from(globalProjectRegistry.values()).find(
-            p => p.projectName === parsed.projectName
-          )
-          
-          if (!targetProject) {
-            await firstProject.telegramClient.sendMessage({
-              chat_id: update.message.chat.id,
-              text: `❌ Project not found: ${parsed.projectName}\n\nAvailable projects:\n${Array.from(globalProjectRegistry.values()).map(p => `- ${p.projectName}`).join("\n")}`
-            })
-            continue
-          }
-          
-          try {
-            // Create new session for the project
-            const result = await targetProject.input.client.session.create({
-              worktree: targetProject.directory,
-            })
-            
-            if (result.id) {
-              targetProject.latestSessionId = result.id
-              
-              await firstProject.telegramClient.sendMessage({
-                chat_id: update.message.chat.id,
-                text: `✅ New session created for ${parsed.projectName}\nSession ID: ${result.id}`
-              })
-            } else {
-              await firstProject.telegramClient.sendMessage({
-                chat_id: update.message.chat.id,
-                text: `❌ Failed to create session for ${parsed.projectName}`
-              })
-            }
-          } catch (error) {
-            console.error(`[TelegramPoll] Error creating session for ${parsed.projectName}:`, error)
-            await firstProject.telegramClient.sendMessage({
-              chat_id: update.message.chat.id,
-              text: `❌ Error creating session for ${parsed.projectName}: ${error.message}`
-            })
-          }
-          continue
-        }
+        console.log(`[Polling] Received message from ${chatId}:`, parsedMessage)
         
-        // Handle regular message (broadcast to all projects)
-        if (parsed.type === "message") {
-          console.log("[TelegramPoll] Broadcast message:", {
-            messageContent: parsed.message.substring(0, 50) + (parsed.message.length > 50 ? "..." : "")
-          })
-          
-          // Broadcast to all registered projects
-          for (const [projectKey, project] of globalProjectRegistry.entries()) {
-            const sessionId = project.latestSessionId
-            
-            if (!sessionId) {
-              continue
-            }
-            
-            try {
-              // Send message to OpenCode session
-              await project.input.client.session.prompt({
-                path: { id: sessionId },
-                body: {
-                  parts: [{ type: "text", text: parsed.message }],
-                },
-              })
-            } catch (error) {
-              console.error(`[TelegramPoll] Error sending message to ${project.projectName}:`, error)
-            }
-          }
-          
-          // Send confirmation
-          await firstProject.telegramClient.sendMessage({
-            chat_id: update.message.chat.id,
-            text: `✅ Message broadcast to ${globalProjectRegistry.size} project(s)`
-          })
-        }
+        await processTelegramMessage(parsedMessage, chatId, ctx, updates[0]?.update_id)
       }
     }
   } catch (error) {
-    console.error("[TelegramPoll] Error in global polling:", error)
+    console.error("[GlobalPolling] Error:", error)
+  }
+}
+
+async function processTelegramMessage(
+  parsedMessage: any,
+  chatId: string,
+  ctx: any,
+  updateId?: number
+) {
+  const { client } = ctx.input
+  
+  if (parsedMessage.type === "project_message" && parsedMessage.projectName) {
+    const targetProject = Array.from(globalProjectRegistry.values()).find(
+      p => p.projectName === parsedMessage.projectName
+    )
+    
+    if (!targetProject) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Project not found: ${parsedMessage.projectName}\n\nAvailable projects:\n${Array.from(globalProjectRegistry.values()).map(p => `- ${p.projectName}`).join('\n')}`
+      })
+      return
+    }
+    
+    const sessionId = targetProject.latestSessionId
+    if (!sessionId) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ No active session for project: ${parsedMessage.projectName}\n\nUse /new_session ${parsedMessage.projectName} to create a new session.`
+      })
+      return
+    }
+    
+    try {
+      await client.session.prompt({
+        path: { id: sessionId },
+        body: { parts: [{ type: "text", text: parsedMessage.message }] }
+      })
+      
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `✅ Message sent to ${parsedMessage.projectName}\nSession: ${sessionId}`
+      })
+    } catch (error: any) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Failed to send message: ${error.message}`
+      })
+    }
+  }
+  
+  else if (parsedMessage.type === "new_session" && parsedMessage.projectName) {
+    const targetProject = Array.from(globalProjectRegistry.values()).find(
+      p => p.projectName === parsedMessage.projectName
+    )
+    
+    if (!targetProject) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Project not found: ${parsedMessage.projectName}`
+      })
+      return
+    }
+    
+    try {
+      const result = await client.session.create({
+        body: { directory: targetProject.directory }
+      })
+      
+      targetProject.latestSessionId = result.id
+      
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `✅ New session created for ${parsedMessage.projectName}\nSession ID: ${result.id}`
+      })
+    } catch (error: any) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Failed to create session: ${error.message}`
+      })
+    }
+  }
+  
+  else if (parsedMessage.type === "message" && parsedMessage.message) {
+    const sessionId = ctx.latestSessionId
+    if (!sessionId) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ No active session for ${ctx.projectName}`
+      })
+      return
+    }
+    
+    try {
+      await client.session.prompt({
+        path: { id: sessionId },
+        body: { parts: [{ type: "text", text: parsedMessage.message }] }
+      })
+      
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `✅ Message sent to ${ctx.projectName}`
+      })
+    } catch (error: any) {
+      await ctx.telegramClient.sendMessage({
+        chat_id: chatId,
+        text: `❌ Failed to send message: ${error.message}`
+      })
+    }
   }
 }
 
