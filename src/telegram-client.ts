@@ -42,10 +42,7 @@ export class TelegramClient {
   escapeMarkdownV2(text: string): string {
     let result = text
     
-    // Escape backslash FIRST
     result = result.replace(/\\/g, '\\\\')
-    
-    // Escape special characters EXCEPT * and _ (used for markdown formatting)
     result = result.replace(/\[/g, '\\[')
     result = result.replace(/\]/g, '\\]')
     result = result.replace(/\(/g, '\\(')
@@ -91,16 +88,19 @@ export class TelegramClient {
       const jsonData = JSON.stringify(payload)
       const url = `https://api.telegram.org/bot${this.botToken}/sendMessage`
       
-      const result = await this.shell`curl -s -X POST ${url} -H "Content-Type: application/json" -d ${jsonData}`.nothrow().json()
+      const shellResult = await this.shell`curl -s -X POST ${url} -H "Content-Type: application/json" -d ${jsonData}`.nothrow()
+      const rawText = await shellResult.text()
+      
+      const result = JSON.parse(rawText)
       
       if (!result || !result.ok) {
-        console.error(`[Telegram] sendMessage failed: ${result?.error || result?.result || 'unknown error'}`)
+        console.error(`[Telegram] sendMessage failed: ${result?.result?.description || 'unknown error'}`)
         return false
       }
 
       return true
-    } catch (error) {
-      console.error("[Telegram] Failed to send message:", error)
+    } catch (error: any) {
+      console.error("[Telegram] Failed to send message:", error.message)
       return false
     }
   }
@@ -203,12 +203,26 @@ export class TelegramClient {
 
     try {
       const offset = this.lastUpdateId + 1
-      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}\u0026timeout=30`
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`
       
-      const result = await this.shell`curl -s ${url}`.nothrow().json()
+      console.log("[Telegram] getUpdates URL:", url.substring(0, 50) + "...")
+      
+      const shellResult = await this.shell`curl -s ${url}`.nothrow()
+      const rawText = await shellResult.text()
+      
+      console.log("[Telegram] getUpdates raw response:", rawText.substring(0, 200))
+      
+      if (!rawText || rawText.trim() === "") {
+        console.error("[Telegram] getUpdates returned empty response")
+        return []
+      }
+      
+      const result = JSON.parse(rawText)
+      
+      console.log("[Telegram] getUpdates parsed:", result.ok ? "OK" : "FAILED")
       
       if (!result || !result.ok) {
-        console.error(`[Telegram] getUpdates failed: ${result?.error || 'unknown error'}`)
+        console.error(`[Telegram] getUpdates failed: ${result?.result?.description || 'unknown error'}`)
         return []
       }
 
@@ -223,9 +237,11 @@ export class TelegramClient {
         return result.result
       }
 
+      console.error("[Telegram] getUpdates returned no updates")
       return []
-    } catch (error) {
-      console.error("[Telegram] Failed to get updates:", error)
+    } catch (error: any) {
+      console.error("[Telegram] Failed to get updates:", error.message)
+      console.error("[Telegram] Error stack:", error.stack)
       return []
     }
   }
