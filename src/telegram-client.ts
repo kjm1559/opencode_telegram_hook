@@ -203,9 +203,9 @@ export class TelegramClient {
 
     try {
       const offset = this.lastUpdateId + 1
-      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}\u0026timeout=30`
       
-      const result = await this.shell`curl -s -X POST ${url}`.nothrow().json()
+      const result = await this.shell`curl -s ${url}`.nothrow().json()
       
       if (!result || !result.ok) {
         console.error(`[Telegram] getUpdates failed: ${result?.error || 'unknown error'}`)
