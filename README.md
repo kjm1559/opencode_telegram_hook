@@ -13,14 +13,16 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 ## ⚠️ Communication Status
 
 - ✅ **OpenCode → Telegram**: Working (event-driven, real-time)
-- ❌ **Telegram → OpenCode**: Disabled (requires external webhook server)
+- ✅ **Telegram → OpenCode**: Working (single polling thread with routing)
 
-**Architecture**: Event-driven (no polling)
-- Each project has its own event handler
-- Events are sent asynchronously and immediately
-- No HTTP 409 conflicts (polling removed)
+**Architecture**: Hybrid (Event-driven + Polling)
+- **OpenCode → Telegram**: Each project has its own event handler (async, immediate)
+- **Telegram → OpenCode**: Single polling thread routes messages by project name to each session
+- **No 409 conflicts**: File-based lock ensures only one instance polls
 
-**For bidirectional communication**: Use an external webhook server (see [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section).
+**Commands**:
+- `/project <name> <message>` - Send message to specific project's session
+- `/new_session <name>` - Create new session for project
 
 ## Architecture
 
