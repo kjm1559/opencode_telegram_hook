@@ -40,6 +40,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         }
       }
     } catch (error: any) {
+      // Ignore 409 conflicts (multiple instances) silently
       if (!error.message?.includes("409")) {
         console.error("[Telegram Polling] Error:", error.message)
       }
@@ -47,26 +48,24 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   }, 3000).unref()
 
   async function forwardToSession(client: any, message: string, chatId: string, projectName: string) {
-    // Get last session via HTTP API
-    const sessionsRes = await fetch("http://localhost:4096/session", {
-      headers: { "Content-Type": "application/json" }
-    })
-    const sessions = await sessionsRes.json()
-    const lastSession = sessions.result?.[0]
-    
-    if (!lastSession?.id) {
-      await telegramClient.sendMessage({
-        chat_id: chatId,
-        text: `[${projectName}] ❌ No active session. Create one first.`
-      })
-      return
-    }
-    
     try {
-      await fetch(`http://localhost:4096/session/${lastSession.id}/message`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ parts: [{ type: "text", text: message }] })
+      // Get sessions via OpenCode client API
+      const sessionsResult = await client.session.list({})
+      const sessions = sessionsResult?.result || []
+      const lastSession = sessions[0]
+      
+      if (!lastSession?.id) {
+        await telegramClient.sendMessage({
+          chat_id: chatId,
+          text: `[${projectName}] ❌ No active session. Create one first.`
+        })
+        return
+      }
+      
+      // Forward message via OpenCode client API
+      await client.session.prompt({
+        path: { id: lastSession.id },
+        body: { parts: [{ type: "text", text: message }] }
       })
       
       await telegramClient.sendMessage({
@@ -74,6 +73,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         text: `[${projectName}] ✅ Message sent to session ${lastSession.id}`
       })
     } catch (error: any) {
+      console.error(`[Telegram] Forward error:`, error.message)
       await telegramClient.sendMessage({
         chat_id: chatId,
         text: `[${projectName}] ❌ Error: ${error.message}`
