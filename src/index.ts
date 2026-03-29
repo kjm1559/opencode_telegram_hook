@@ -289,19 +289,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
           projectContext: new Map()
         })
         
-        // Only first registered project starts polling
-        // Check if this is the first project by checking registry size
-        const isFirstProject = globalProjectRegistry.size === 1
-        
-        if (isFirstProject && !globalPollingStarted) {
-          globalPollingStarted = true
-          globalPollingInterval = setInterval(globalPollingLoop, 1000)
-          console.log("[Telegram] Global polling started (1s interval) - First instance")
-        } else {
-          console.log("[Telegram] Skipping polling - Not first instance (registry size:", globalProjectRegistry.size, ")")
-        }
+        console.log("[Telegram] Project registered:", projectName)
+        console.log("[Telegram] Total projects:", globalProjectRegistry.size)
       } else {
-        console.log("[Telegram] Skipping registration - Project already registered:", projectName)
+        console.log("[Telegram] Skipping - Project already registered:", projectName)
       }
       
       console.log("\n===== [TelegramPlugin] Initialized ====")
@@ -310,9 +301,10 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       console.log("  Projects:", config.projects?.length || 0)
       console.log("  Chat IDs:", defaultChatIds)
       console.log("  TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID || "NOT SET")
-      console.log("  Polling:", globalPollingStarted ? "Running" : "Not running")
+      console.log("  Polling: DISABLED (multiple instances cause 409 conflicts)")
       console.log("  Registry size:", globalProjectRegistry.size)
-      console.log("=================================\n")
+      console.log("  Note: Telegram message reception disabled")
+      console.log("================================\n")
     }
   }
 }
