@@ -13,29 +13,30 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 ## ⚠️ Communication Status
 
 - ✅ **OpenCode → Telegram**: Working (event-driven, real-time)
-- ✅ **Telegram → OpenCode**: Working (single polling thread with routing)
+- ✅ **Telegram → OpenCode**: Working (simple polling, no state management)
 
-**Architecture**: Single shared TelegramClient for all projects:
-- **OpenCode → Telegram**: Event-driven notifications (all projects share client)
-- **Telegram → OpenCode**: Single polling thread routes messages by project name
-- **No 409 conflicts**: Singleton pattern ensures one instance only
+**Architecture**: Minimal message relay - no shared state, no locks.
+- **OpenCode → Telegram**: Each plugin instance sends notifications independently
+- **Telegram → OpenCode**: Simple polling (3s interval), forwards to latest session
+- **Multiple instances allowed**: 409 errors silently ignored
 
 **Commands**:
-- `/project <name> <message>` - Send message to specific project's session
-- `/new_session <name>` - Create new session for project
+- `/project <name> <message>` - Send message to latest session
+- Plain message - Also sent to latest session
 
 ## Architecture
 
-### N:1 Project-to-Telegram Model (Bidirectional)
+### N:1 Project-to-Telegram Model (Message Relay)
 
-**Architecture**: Single shared TelegramClient for all projects.
+**Architecture**: Minimal message relay - each plugin instance works independently.
 
 ```
 ┌──┬───────┬─────┬────────────────────────────────────────────────────┐
 │   │       │     │              OpenCode Projects                    │
 │   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
 │   │       │     │  │Proj A  │  │Proj B  │  │Proj C  │              │
-│   │       │     │  │  /a    │  │  /b    │  │  /c    │              │
+│   │       │     │  │plugin  │  │plugin  │  │plugin  │              │
+│   │       │     │  │ inst.  │  │ inst.  │  │ inst.  │              │
 │   │       │     │  └───┬───┘  └───┬───┘  └───┬───┘              │
 │   │       │     │      │          │          │                   │
 │   │       │     │      └────┬─────┴───┬──────┘                   │
@@ -50,17 +51,17 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 │  ┌───────────────────────────────────────────────────────┐       │
 │  │ [Project A] 🤖 Agent: Understanding requirements...   │       │
 │  │ [Project B] ✅ Tests: 8/8 passed                      │       │
-│  │ [Project C] 🔧 Edited src/auth.ts                     │       │
-│  │ 👤 User: /project A deploy to prod                    │       │
-│  │ [Project A] ✅ Deployed successfully                  │       │
+│  │ 👤 User: /project A hello                             │       │
+│  │ [Project A] ✅ Message sent                           │       │
 │  └───────────────────────────────────────────────────────┘       │
 └──────────────────────────────────────────────────────────┘
 ```
 
-**Key Changes**:
-- **Single TelegramClient**: All projects share one client instance
-- **One polling loop**: Receives messages, routes by `/project <name>` command
-- **No 409 conflicts**: Singleton pattern prevents multiple instances
+**Key Points**:
+- **No shared state**: Each plugin instance is independent
+- **Simple polling**: Every instance polls Telegram (3s interval)
+- **No locks**: 409 errors are silently ignored
+- **Message relay only**: No session tracking, no registry
 ┌──┬───────┬─────┬────────────────────────────────────────────────────┐
 │   │       │     │              OpenCode Projects                    │
 │   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
@@ -85,35 +86,30 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Message Flow (Bidirectional)
+### Message Flow (Minimal)
 
 ```
 OpenCode Events          Plugin Processing              Telegram Output
 ─────────────           ───────────────────             ────────────────
-Agent works ──────────▶  Extract session_id ────────────▶
+Agent works ──────────▶  Format message ────────────────▶
                             │                           │
-                            ▼ Format message            │
-                     [Proj A] thinking...               │
-                            │                           │
-                            ▼ Add project tag           │
+                            ▼ Send to Telegram          │
                      [Project A] thinking...            │
-                            │                           │
-                            ▼ Send to Telegram ◀────────┤
                             │                           │
                             ▼ Display in Chat           │
                      [Project A] thinking...            │
                             │                           │
                             │                           │
-User message ◀───◀───◀───◀──┤                           │
+Telegram message ────▶     Polling (3s) ───────────────┤
                             │                           │
-                            ▼ Parse /project command    │
-                     Target: Project A                  │
+                            ▼ Parse command             │
+                     /project A hello                   │
                             │                           │
-                            ▼ Route to session          │
-                     Forward to OpenCode                │
+                            ▼ Forward via client.api    │
+                     client.session.prompt()            │
                             │                           │
-                            ▼ Agent processes           │
-                     [Project A] Received command...    │
+                            ▼ Agent responds            │
+                     [Project A] Hello!                 │
 ```
 
 ## Key Features
@@ -146,11 +142,12 @@ User message ◀───◀───◀───◀──┤                   
 - Proper escaping of special characters in dynamic content
 - Emojis and icons for visual clarity
 
-### 4. Session Management
+### 4. Simple Message Relay
 
-- **Automatic activation**: Each project maintains "last active" session
-- **Multi-project control**: `/status` shows all active projects
-- **Cancellation**: `/cancel [project-name]` stops specific project
+- **No state management**: Each plugin instance works independently
+- **Simple polling**: 3-second interval, forwards to latest session
+- **No locks**: Multiple instances allowed, 409 errors ignored
+- **Minimal code**: 99 lines, just message relay
 
 ## Installation
 
@@ -218,41 +215,19 @@ You will receive real-time notifications from OpenCode:
 
 ### Sending Messages to OpenCode
 
-**Send to specific project**:
+**Send to latest session**:
 ```
-/project opencode_telegram_hook hello agent
+/project <project-name> hello agent
 ```
 
-**Create new session**:
+**Or just send a message** (also goes to latest session):
 ```
-/new_session news_curation
+hello agent
 ```
 
 **Response**:
 ```
-✅ New session created for news_curation
-Session ID: ses_abc123
-
-Send your task request.
-│
-✅ Created new session for "my-new-feature"
-   Session: ses_abc123
-   Directory: /home/project/my-new-feature
-   
-Send your task request.
-```
-
-#### Status Check
-
-```
-/status
-│
-📊 Active Projects:
-  • backend-api (ses_abc12) — Active
-  • frontend-app (ses_def45) — Idle
-  • data-pipeline (ses_ghi78) — Completed
-  
-Total: 3 projects, 2 active sessions
+✅ Message sent to session ses_abc123
 ```
 
 ## Development
