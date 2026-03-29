@@ -276,25 +276,6 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     config: async () => {
       const projectKey = directory
       
-      // Send startup message for each project
-      if (defaultChatIds.length > 0) {
-        try {
-          const startupText = `🔧 Telegram Plugin Loaded
-
-📂 Project: ${projectName}
-📁 Directory: ${directory}
-
-Plugin is now active and ready to receive events from OpenCode.`
-          await telegramClient.sendMessage({
-            chat_id: defaultChatIds[0],
-            text: startupText
-          })
-          console.log(`[Telegram] Startup message sent for ${projectName}`)
-        } catch (e) {
-          console.error(`Failed to send startup message for ${projectName}:`, e)
-        }
-      }
-      
       // Register this project globally
       if (!globalProjectRegistry.has(projectKey)) {
         globalProjectRegistry.set(projectKey, {
@@ -308,12 +289,19 @@ Plugin is now active and ready to receive events from OpenCode.`
           projectContext: new Map()
         })
         
-        // Start global polling if not already started
-        if (!globalPollingStarted) {
+        // Only first registered project starts polling
+        // Check if this is the first project by checking registry size
+        const isFirstProject = globalProjectRegistry.size === 1
+        
+        if (isFirstProject && !globalPollingStarted) {
           globalPollingStarted = true
           globalPollingInterval = setInterval(globalPollingLoop, 1000)
-          console.log("[Telegram] Global polling started (1s interval)")
+          console.log("[Telegram] Global polling started (1s interval) - First instance")
+        } else {
+          console.log("[Telegram] Skipping polling - Not first instance (registry size:", globalProjectRegistry.size, ")")
         }
+      } else {
+        console.log("[Telegram] Skipping registration - Project already registered:", projectName)
       }
       
       console.log("\n===== [TelegramPlugin] Initialized ====")
@@ -322,7 +310,8 @@ Plugin is now active and ready to receive events from OpenCode.`
       console.log("  Projects:", config.projects?.length || 0)
       console.log("  Chat IDs:", defaultChatIds)
       console.log("  TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID || "NOT SET")
-      console.log("  Polling: Using global polling loop")
+      console.log("  Polling:", globalPollingStarted ? "Running" : "Not running")
+      console.log("  Registry size:", globalProjectRegistry.size)
       console.log("=================================\n")
     }
   }
