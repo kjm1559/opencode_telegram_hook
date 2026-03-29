@@ -12,10 +12,15 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 
 ## ⚠️ Communication Status
 
-- ✅ **OpenCode → Telegram**: Working (sends events, notifications)
-- ❌ **Telegram → OpenCode**: Disabled (polling disabled due to 409 conflicts)
+- ✅ **OpenCode → Telegram**: Working (event-driven, real-time)
+- ❌ **Telegram → OpenCode**: Disabled (requires external webhook server)
 
-**Note**: Multiple plugin instances cause HTTP 409 conflicts. Telegram message reception is disabled. Use an external webhook server for bidirectional communication.
+**Architecture**: Event-driven (no polling)
+- Each project has its own event handler
+- Events are sent asynchronously and immediately
+- No HTTP 409 conflicts (polling removed)
+
+**For bidirectional communication**: Use an external webhook server (see [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section).
 
 ## Architecture
 
@@ -68,55 +73,6 @@ Agent works ──────────▶  Extract session_id ────�
 ```
 
 **For Bidirectional Communication**: See [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section.
-┌───┬───────┬─────┬────────────────────────────────────────────────────┐
-│   │       │     │              OpenCode Projects                    │
-│   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
-│   │       │     │  │Proj A  │  │Proj B  │  │Proj C  │              │
-│   │       │     │  │  /a    │  │  /b    │  │  /c    │              │
-│   │       │     │  └───┬───┘  └───┬───┘  └───┬───┘              │
-│   │       │     │      │          │          │                   │
-│   │       │     │      └────┬─────┴───┬──────┘                   │
-│   │       │     │           │         │                          │
-│   │       │     │     Last Active Session                        │
-│   │       │     │           │         │                          │
-└───┴───────┴─────┴──────────────┬──────┴───────┘                   │
-                                │                                  │
-                                ▼                                  │
-┌──────────────────────────────────────────────────────────────────┤
-│                        Telegram Chat                            │
-│  ┌───────────────────────────────────────────────────────┐       │
-│  │ [Project A] 🤖 Agent: Understanding requirements...   │       │
-│  │ [Project B] ✅ Tests: 8/8 passed                      │       │
-│  │ [Project C] 🔧 Edited src/auth.ts                     │       │
-│  └───────────────────────────────────────────────────────┘       │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### Message Flow
-
-```
-User Input              Plugin Processing              OpenCode Output
-──────────            ───────────────────             ────────────────
-"[proj-a] fix bug" ──▶  Parse project tag ────────────▶
-                            │                           │
-                            ▼ Find project directory    │
-                     /home/project/a                    │
-                            │                           │
-                            ▼ Get last active session   │
-                     session_abc123                     │
-                            │                           │
-                            ▼ Inject message ───────────▶
-                                      │                        │
-                                      ▼                        │
-                              Agent works                   │
-                                      │                        │
-                                      ▼ Stream events ◀───────┤
-                                      │                        │
-                            ┌─────────┴──────────┐           │
-                            ▼                    ▼           │
-                      [Project A]            [Project A]     │
-                      thinking...            edited file     │
-```
 
 ## Key Features
 
