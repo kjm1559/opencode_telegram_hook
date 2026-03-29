@@ -30,6 +30,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const { client, directory, worktree } = input
 
   const config: Config = loadConfig()
+  const projectKey = directory // For global registry lookup
 
   const defaultChatIds = Array.from(
     new Set([
@@ -90,6 +91,13 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         if (extractedSessionId) {
           latestSessionId = extractedSessionId
           eventLog(`✓ Cached session: ${latestSessionId}`)
+          
+          // Sync with global registry for routing
+          const registryEntry = globalProjectRegistry.get(projectKey)
+          if (registryEntry) {
+            registryEntry.latestSessionId = latestSessionId
+            eventLog(`✓ Synced to registry: ${latestSessionId}`)
+          }
         } else {
           eventLog(`✗ FAILED TO CACHE: session.started but no session_id found!`)
           console.log(`  session.started properties:`, event.properties)
@@ -99,6 +107,13 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         if (completedSessionId && latestSessionId === completedSessionId) {
           latestSessionId = null
           eventLog(`✓ Cleared session cache`)
+          
+          // Sync with global registry
+          const registryEntry = globalProjectRegistry.get(projectKey)
+          if (registryEntry) {
+            registryEntry.latestSessionId = null
+            eventLog(`✓ Cleared registry session`)
+          }
         }
       }
 
