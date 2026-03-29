@@ -31,6 +31,28 @@ const content = event.payload.request.content;
 - Git 히스토리를 **메모리처럼 사용** — 과거 작업 내용, 결정 사항, 이슈 해결 과정을 커밋 메시지와 히스토리에서 추적
 - `git log --oneline -20` 또는 `git log -p AGENTS.md` 로 변경 이력 확인 가능
 
+### ⚠️ **보안 경고: 민감한 정보 절대 커밋 금지**
+
+**절대 Git 에 커밋하지 말 것**:
+- ❌ Bot Token (`TELEGRAM_BOT_TOKEN`)
+- ❌ API Keys, Secrets
+- ❌ Passwords, Credentials
+- ❌ Chat IDs (개인 정보일 수 있음)
+- ❌ `.env` 파일
+- ❌ `config.json` (토큰 포함 시)
+
+**올바른 방법**:
+- ✅ 환경 변수로 관리 (`process.env.TELEGRAM_BOT_TOKEN`)
+- ✅ `.gitignore` 에 `.env`, `*.json` 추가
+- ✅ 테스트 파일에 토큰 하드코딩 금지
+- ✅ 실수하면 즉시 `git filter-repo` 로 히스토리 정화
+
+**토큰이 노출되었을 때**:
+1. `git filter-repo --invert-paths --path <파일명>` 로 히스토리 정화
+2. `git push --force` 로 원격지 업데이트
+3. Telegram BotFather 에서 새 토큰 재발행
+4. 기존 토큰은 자동으로 무효화됨
+
 ## Debugging
 
 콘솔 로그 확인:
