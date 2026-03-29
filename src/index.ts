@@ -295,16 +295,40 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         console.log("[Telegram] Skipping - Project already registered:", projectName)
       }
       
+      // File-based lock for single polling thread across all plugin instances
+      const lockFile = "/tmp/telegram_plugin.lock"
+      const fs = await import("fs/promises")
+      
+      // Small delay to avoid race conditions
+      await new Promise(resolve => setTimeout(resolve, 50))
+      
+      const hasLock = await fs.access(lockFile).then(() => true).catch(() => false)
+      
+      if (!hasLock && !globalPollingStarted) {
+        try {
+          // Try to create lock file atomically
+          await fs.writeFile(lockFile, `${process.pid}:${Date.now()}`, { flag: 'wx' })
+          globalPollingStarted = true
+          globalPollingInterval = setInterval(globalPollingLoop, 3000)
+          console.log("[Telegram] Single polling thread started (3s interval) - Lock acquired (PID:", process.pid, ")")
+        } catch (error: any) {
+          console.log("[Telegram] Lock already exists - Another instance is polling")
+        }
+      } else if (hasLock) {
+        console.log("[Telegram] Skipping polling - Lock already exists")
+      } else {
+        console.log("[Telegram] Skipping polling - Already started")
+      }
+      
       console.log("\n===== [TelegramPlugin] Initialized ====")
       console.log("  Directory:", directory)
       console.log("  Bot token set:", !!(config.telegram_bot_token))
       console.log("  Projects:", config.projects?.length || 0)
       console.log("  Chat IDs:", defaultChatIds)
       console.log("  TELEGRAM_CHAT_ID:", process.env.TELEGRAM_CHAT_ID || "NOT SET")
-      console.log("  Polling: DISABLED (event-driven only)")
+      console.log("  Polling:", globalPollingStarted ? `Running (PID: ${process.pid})` : "Disabled")
       console.log("  Registry size:", globalProjectRegistry.size)
-      console.log("  Architecture: Event-driven (OpenCode → Telegram)")
-      console.log("  Note: For Telegram → OpenCode, use external webhook server")
+      console.log("  Architecture: Event-driven + Single polling thread")
       console.log("========================================\n")
     }
   }
