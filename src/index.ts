@@ -295,19 +295,24 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         console.log("[Telegram] Skipping - Project already registered:", projectName)
       }
       
-      // Only first project starts polling (file-based lock)
-      const isFirstProject = globalProjectRegistry.size === 1
+      // File-based lock to ensure only one instance polls across all plugin instances
+      const lockFile = "/tmp/telegram_plugin.lock"
+      const fs = await import("fs/promises")
+      const hasLock = await fs.access(lockFile).then(() => true).catch(() => false)
       
-      if (isFirstProject && !globalPollingStarted) {
+      if (!hasLock && !globalPollingStarted) {
         try {
+          await fs.writeFile(lockFile, process.pid.toString())
           globalPollingStarted = true
-          globalPollingInterval = setInterval(globalPollingLoop, 3000) // 3 초마다 polling
-          console.log("[Telegram] Global polling started (3s interval) - First instance only")
+          globalPollingInterval = setInterval(globalPollingLoop, 3000)
+          console.log("[Telegram] Global polling started (3s interval) - Lock acquired (PID:", process.pid, ")")
         } catch (error: any) {
-          console.error("[Telegram] Failed to start polling:", error.message)
+          console.log("[Telegram] Lock already exists - Skipping polling")
         }
+      } else if (hasLock) {
+        console.log("[Telegram] Skipping polling - Lock already exists")
       } else {
-        console.log("[Telegram] Skipping polling - Not first instance (registry size:", globalProjectRegistry.size, ")")
+        console.log("[Telegram] Skipping polling - Already started")
       }
       
       console.log("\n===== [TelegramPlugin] Initialized ====")
