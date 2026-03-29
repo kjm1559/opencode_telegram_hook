@@ -13,22 +13,22 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 ## ⚠️ Communication Status
 
 - ✅ **OpenCode → Telegram**: Working (event-driven, real-time)
-- ✅ **Telegram → OpenCode**: Working (simple polling, no state management)
+- ✅ **Telegram → OpenCode**: Working (module-level polling with routing)
 
-**Architecture**: Minimal message relay - no shared state, no locks.
+**Architecture**: Module-level polling, instance-level registration.
 - **OpenCode → Telegram**: Each plugin instance sends notifications independently
-- **Telegram → OpenCode**: Simple polling (3s interval), forwards to latest session
-- **Multiple instances allowed**: 409 errors silently ignored
+- **Telegram → OpenCode**: Single polling thread (module-level) routes messages by project name
+- **No 409 conflicts**: One polling thread for all projects
 
 **Commands**:
-- `/project <name> <message>` - Send message to latest session
-- Plain message - Also sent to latest session
+- `/project <name> <message>` - Send message to specific project's latest session
+- Plain message - Sent to first registered project's latest session
 
 ## Architecture
 
-### N:1 Project-to-Telegram Model (Message Relay)
+### N:1 Project-to-Telegram Model (Module-Level Polling)
 
-**Architecture**: Minimal message relay - each plugin instance works independently.
+**Architecture**: Module-level polling with instance-level registration.
 
 ```
 ┌──┬───────┬─────┬────────────────────────────────────────────────────┐
@@ -39,6 +39,9 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 │   │       │     │  │ inst.  │  │ inst.  │  │ inst.  │              │
 │   │       │     │  └───┬───┘  └───┬───┘  └───┬───┘              │
 │   │       │     │      │          │          │                   │
+│   │       │     │      │ register │ register │ register          │
+│   │       │     │      │ to       │ to       │ to                │
+│   │       │     │      │ registry │ registry │ registry          │
 │   │       │     │      └────┬─────┴───┬──────┘                   │
 │   │       │     │           │         │                          │
 │   │       │     │     Events & Notifications                     │
@@ -58,10 +61,10 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 ```
 
 **Key Points**:
-- **No shared state**: Each plugin instance is independent
-- **Simple polling**: Every instance polls Telegram (3s interval)
-- **No locks**: 409 errors are silently ignored
-- **Message relay only**: No session tracking, no registry
+- **Module-level polling**: Starts immediately when plugin loads (not per-instance)
+- **Instance-level registration**: Each project registers to shared registry
+- **Single polling thread**: Routes messages by `/project <name>` command
+- **No 409 conflicts**: One polling thread for all projects
 ┌──┬───────┬─────┬────────────────────────────────────────────────────┐
 │   │       │     │              OpenCode Projects                    │
 │   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
@@ -86,7 +89,7 @@ This plugin integrates OpenCode agent work with Telegram with **project-based or
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Message Flow (Minimal)
+### Message Flow (Module-Level Polling)
 
 ```
 OpenCode Events          Plugin Processing              Telegram Output
@@ -100,13 +103,16 @@ Agent works ──────────▶  Format message ──────
                      [Project A] thinking...            │
                             │                           │
                             │                           │
-Telegram message ────▶     Polling (3s) ───────────────┤
-                            │                           │
+Telegram message ────▶     Module-level polling ───────┤
+                            │ (3s interval)            │
                             ▼ Parse command             │
                      /project A hello                   │
                             │                           │
+                            ▼ Route to project          │
+                     projectRegistry[A]                 │
+                            │                           │
                             ▼ Forward via client.api    │
-                     client.session.prompt()            │
+                     project.client.session.prompt()    │
                             │                           │
                             ▼ Agent responds            │
                      [Project A] Hello!                 │
@@ -142,12 +148,13 @@ Telegram message ────▶     Polling (3s) ──────────
 - Proper escaping of special characters in dynamic content
 - Emojis and icons for visual clarity
 
-### 4. Simple Message Relay
+### 4. Module-Level Polling with Routing
 
-- **No state management**: Each plugin instance works independently
-- **Simple polling**: 3-second interval, forwards to latest session
-- **No locks**: Multiple instances allowed, 409 errors ignored
-- **Minimal code**: 99 lines, just message relay
+- **Module-level polling**: Starts immediately when plugin loads
+- **Instance-level registration**: Each project registers to shared registry
+- **Single polling thread**: Routes messages by `/project <name>` command
+- **No 409 conflicts**: One polling thread for all projects
+- **No state management**: Just message relay, no session tracking
 
 ## Installation
 
