@@ -13,9 +13,6 @@ const projectRegistry = new Map<string, {
   chatIds: string[]
 }>()
 
-// Initialize polling immediately when plugin loads
-let pollingInterval: NodeJS.Timeout | null = null
-
 // Route message to specific project
 async function routeToSession(projectName: string, message: string, chatId: string) {
   const project = projectRegistry.get(projectName)
@@ -104,8 +101,9 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   // Initialize shared TelegramClient once
   if (!sharedTelegramClient) {
     sharedTelegramClient = new TelegramClient(config.telegram_bot_token, input.$)
-    // Start polling immediately
-    pollingInterval = setInterval(handlePolling, 3000).unref()
+    // Start polling immediately (module-level, not instance-level)
+    setInterval(handlePolling, 3000).unref()
+    console.log("[Telegram] Polling started (module-level)")
   }
   
   const telegramClient = sharedTelegramClient
