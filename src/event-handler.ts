@@ -92,26 +92,49 @@ export class EventHandler {
 
     if (event.type === "tool.execute.before") {
       const toolName = event.toolName || event.arguments?.tool || "unknown"
-      const message = `[${projectName}] 🔧 Using tool: ${toolName}
-
----
-`
-      return this.escapeHtml(message)
+      const args = event.arguments || {}
+      const argKeys = Object.keys(args).filter(k => k !== 'tool')
+      
+      const lines = [
+        `<b>[${this.escapeHtml(projectName)}]</b> 🔧 Tool: <code>${this.escapeHtml(toolName)}</code>`
+      ]
+      
+      if (argKeys.length > 0) {
+        lines.push(`\n<b>Input:</b>`)
+        for (const key of argKeys.slice(0, 5)) {
+          const value = args[key]
+          const valueStr = typeof value === 'string' ? value : JSON.stringify(value)
+          lines.push(`• <code>${this.escapeHtml(key)}</code>: ${this.escapeHtml(valueStr.substring(0, 100))}`)
+        }
+      }
+      
+      lines.push("\n───────────\n")
+      return lines.join("\n")
     }
 
     if (event.type === "tool.execute.after") {
         const success = (event.output?.output && typeof event.output.output === 'string' && event.output.output.includes("success")) 
             || !event.output?.error
         const icon = success ? "✅" : "⚠️"
-        const title = event.output?.title || "Tool executed"
-        const lines = [`[${projectName}] ${icon} ${title}`]
-
-        if (event.output?.output?.substring && typeof event.output.output === 'string') {
-            lines.push(event.output.output.substring(0, 256))
+        const toolName = event.tool || "unknown"
+        
+        const lines = [
+            `<b>[${this.escapeHtml(projectName)}]</b> ${icon} Tool: <code>${this.escapeHtml(toolName)}</code>`
+        ]
+        
+        if (event.output?.output && typeof event.output.output === 'string') {
+            const output = event.output.output.substring(0, 500)
+            lines.push(`\n<b>Output:</b>`)
+            lines.push(`<code>${this.escapeHtml(output)}</code>`)
+        }
+        
+        if (event.output?.error) {
+            lines.push(`\n<b>Error:</b>`)
+            lines.push(`<code>${this.escapeHtml(event.output.error.substring(0, 200))}</code>`)
         }
 
-        lines.push("\n---\n")
-        return this.escapeHtml(lines.join("\n\n"))
+        lines.push("\n───────────\n")
+        return lines.join("\n\n")
     }
 
     if (event.type === "command.executed") {
@@ -367,8 +390,16 @@ See summary below for details.
       ? content.substring(0, maxLength) + "...\n\n(truncated)"
       : content
     
-    const escaped = this.escapeHtml(truncated)
-    return `[${this.escapeHtml(projectName)}] ${sender}:\n\n${escaped}\n\n---\n`
+    const lines = [
+      `<b>[${this.escapeHtml(projectName)}]</b> ${sender}:`
+    ]
+    
+    if (truncated) {
+      lines.push(`\n\n${this.escapeHtml(truncated)}`)
+    }
+    
+    lines.push("\n\n───────────\n")
+    return lines.join("")
   }
 
   private escapeHtml(text: string): string {
