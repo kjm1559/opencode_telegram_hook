@@ -1,23 +1,73 @@
 # OpenCode Telegram Plugin (Apache-2.0)
 
-Telegram integration plugin for [OpenCode](https://opencode.ai) — receive AI agent work updates via Telegram, send messages to control agents, and get final work summaries.
+Telegram integration plugin for [OpenCode](https://opencode.ai) — receive AI agent work updates via Telegram and get final work summaries.
 
 ## Overview
 
 This plugin integrates OpenCode agent work with Telegram with **project-based organization**:
 - **Multiple projects, single chat**: One Telegram channel for multiple OpenCode projects
-- **Automatic project routing**: Messages routed by project name prefix
-- **Last active session**: Each project connects to its most recent session
 - **Dynamic project tags**: Every notification shows project origin
-- **New session creation**: Start fresh sessions per project
 - **Enhanced event tracking**: Real-time updates with improved session ID extraction
 - **Startup notification**: Telegram message on plugin initialization
 
+## ⚠️ Communication Status
+
+- ✅ **OpenCode → Telegram**: Working (sends events, notifications)
+- ❌ **Telegram → OpenCode**: Disabled (polling disabled due to 409 conflicts)
+
+**Note**: Multiple plugin instances cause HTTP 409 conflicts. Telegram message reception is disabled. Use an external webhook server for bidirectional communication.
+
 ## Architecture
 
-### N:1 Project-to-Telegram Model
+### N:1 Project-to-Telegram Model (One-Way)
+
+**Important**: Due to multiple plugin instances causing HTTP 409 conflicts, **Telegram message reception is disabled**. Only OpenCode → Telegram notifications work.
 
 ```
+┌──┬───────┬─────┬────────────────────────────────────────────────────┐
+│   │       │     │              OpenCode Projects                    │
+│   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
+│   │       │     │  │Proj A  │  │Proj B  │  │Proj C  │              │
+│   │       │     │  │  /a    │  │  /b    │  │  /c    │              │
+│   │       │     │  └───┬───┘  └───┬───┘  └───┬───┘              │
+│   │       │     │      │          │          │                   │
+│   │       │     │      └────┬─────┴───┬──────┘                   │
+│   │       │     │           │         │                          │
+│   │       │     │     Events & Notifications                     │
+│   │       │     │           │         │                          │
+└──┴───────┴────┴───────────┬─┴───┴───┘                   │
+                            │                            │
+                            ▼ (One-Way Only)             │
+┌─────────────────────────────────────────────────────────────────┤
+│                        Telegram Chat                            │
+│  ┌───────────────────────────────────────────────────────┐       │
+│  │ [Project A] 🤖 Agent: Understanding requirements...   │       │
+│  │ [Project B] ✅ Tests: 8/8 passed                      │       │
+│  │ [Project C] 🔧 Edited src/auth.ts                     │       │
+│  └───────────────────────────────────────────────────────┘       │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Message Flow (One-Way)
+
+```
+OpenCode Events          Plugin Processing              Telegram Output
+─────────────           ───────────────────             ────────────────
+Agent works ──────────▶  Extract session_id ────────────▶
+                            │                           │
+                            ▼ Format message            │
+                     [Proj A] thinking...               │
+                            │                           │
+                            ▼ Add project tag           │
+                     [Project A] thinking...            │
+                            │                           │
+                            ▼ Send to Telegram ◀────────┤
+                            │                           │
+                            ▼ Display in Chat           │
+                     [Project A] thinking...            │
+```
+
+**For Bidirectional Communication**: See [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section.
 ┌───┬───────┬─────┬────────────────────────────────────────────────────┐
 │   │       │     │              OpenCode Projects                    │
 │   │  /a   │  /b │  ┌────────┐  ┌────────┐  ┌────────┐              │
@@ -86,12 +136,6 @@ User Input              Plugin Processing              OpenCode Output
 - **Event filtering**: Configurable tracking with case-insensitive event type matching
 - **Debug logging**: Comprehensive logging for troubleshooting
 
-### 2. Message Routing
-
-- **Project-specific**: `/project <name> <message>` → routes to specific project's session
-- **Broadcast**: Regular messages → sent to all active projects
-- **New sessions**: `/new_session <name>` creates fresh session for project
-
 ### 3. Real-Time Updates
 
 - **Streaming output**: See agent thinking, tool calls, file edits as they happen
@@ -156,103 +200,31 @@ bun run build
 
 ## Usage
 
-### Sending Work Requests
+### ⚠️ Current Limitation
 
-**To specific project:**
-```
-/project opencode_telegram_hook show me the code structure
-```
+**Telegram message reception is disabled** due to HTTP 409 conflicts from multiple plugin instances. Only OpenCode → Telegram notifications work.
 
-**Broadcast to all projects:**
-```
-Check the status of all projects
-```
+### Receiving Notifications
 
-**Create new session:**
+You will receive real-time notifications from OpenCode:
+
+**Project-Specific Updates:**
 ```
-/new_session news_curation
+[opencode_telegram_hook] 🤖 Agent: Understanding requirements...
+[opencode_telegram_hook] 🔧 Edited src/index.ts
+[opencode_telegram_hook] ✅ Tests: 8/8 passed
 ```
 
-### Commands
-
+**Multiple Projects:**
 ```
-/project <name> <message>   Send message to specific project's session
-/new_session <name>        Create new session for project
-/help                      Show all commands
-/status                    Show status
-/cancel                    Cancel current session
-Regular message            Broadcast to all active projects
+[news_curation] 🤖 Fetching latest news...
+[coin_agent] 📊 Analyzing market data...
+[opencode_telegram_hook] 🔧 Creating test file...
 ```
 
-### Examples
+### For Bidirectional Communication
 
-#### Project-Specific Message
-
-```
-/project backend-api add rate limiting
-│
-✅ Message sent to backend-api session
-```
-
-#### Broadcast to All Projects
-
-```
-Show me the current status
-│
-✅ Message broadcast to 3 project(s)
-```
-
-#### Creating New Session
-
-```
-/new_session my-new-feature
-│
-✅ New session created for my-new-feature
-   Session ID: ses_abc123
-   Directory: /home/project/my-new-feature
-```
-
-#### Error Handling
-
-```
-/project wrong-project-name help me
-│
-❌ Project not found: wrong-project-name
-
-Available projects:
-- opencode_telegram_hook
-- news_curation
-- coin_agent
-```
-
-#### No Active Session
-
-```
-/project coin_agent show code
-│
-❌ No active session for project: coin_agent
-
-Use /new_session coin_agent to create a new session.
-```
-│ Telegram Chat |
-├─────────────────────────────
-│ [backend-api] Add rate limiter
-│   ↓
-│ [backend-api] 🤖 Understanding rate limiting requirements...
-│ [backend-api] 🔧 Creating src/middleware/rate-limit.ts
-│ [backend-api] ✅ Tests: 4/4 passed
-│
-│ [frontend-app] Update login UI
-│   ↓
-│ [frontend-app] 🤖 Analyzing current login component...
-│ [frontend-app] 🎨 Modifying styles for login form
-│ [frontend-app] ✅ Files Modified: 3
-```
-
-#### Creating New Session
-
-```
-/new my-new-feature
+To send messages to OpenCode sessions from Telegram, you need an **external webhook server**. See [External Webhook Server](#external-webhook-server-for-bidirectional-communication) section.
 │
 ✅ Created new session for "my-new-feature"
    Session: ses_abc123
@@ -427,6 +399,177 @@ Understand how OpenCode events and messages are structured:
 - [OpenCode Plugin Guide](https://opencode.ai/docs/plugins)
 - [Project Source Code](./src/)
 - [Type Definitions](./opencode/packages/sdk/js/src/v2/gen/types.gen.ts) — OpenCode SDK types
+
+## External Webhook Server for Bidirectional Communication
+
+**Why needed**: Multiple OpenCode plugin instances cause HTTP 409 conflicts when calling Telegram `getUpdates()`. To enable bidirectional communication (Telegram → OpenCode), use an external webhook server.
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    External Webhook Server                  │
+│                    (Node.js/Python/etc.)                    │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │ 1. Set Telegram webhook:                            │    │
+│  │    POST /setWebhook                                 │    │
+│  │    url: https://your-server.com/telegram/webhook    │    │
+│  │                                                     │    │
+│  │ 2. Receive Telegram messages:                       │    │
+│  │    POST /telegram/webhook                           │    │
+│  │    ← Telegram sends updates                         │    │
+│  │                                                     │    │
+│  │ 3. Parse commands:                                  │    │
+│  │    /project <name> <message>                        │    │
+│  │    /new_session <name>                             │    │
+│  │                                                     │    │
+│  │ 4. Forward to OpenCode:                             │    │
+│  │    POST http://localhost:4096/session/<id>/message  │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+                          │
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
+│                      OpenCode Session                       │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │ Agent processes message                             │    │
+│  │ → Events flow to Telegram plugin                    │    │
+│  │ → Plugin sends notifications to Telegram            │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation Example
+
+```typescript
+// webhook-server.ts
+import express from 'express'
+
+const app = express()
+app.use(express.json())
+
+const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN
+const PROJECTS = {
+  'opencode_telegram_hook': { directory: '/home/mj/project/opencode_telegram_hook' },
+  'news_curation': { directory: '/home/mj/project/news_curation' },
+  'coin_agent': { directory: '/home/mj/project/Opencodebot/workspace/coin_agent' }
+}
+
+// Set webhook
+app.post('/set-webhook', async (req, res) => {
+  const webhookUrl = process.env.WEBHOOK_URL // e.g., https://your-server.com/telegram/webhook
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/setWebhook`, {
+    method: 'POST',
+    body: JSON.stringify({ url: webhookUrl })
+  })
+  res.json({ success: true })
+})
+
+// Receive Telegram updates
+app.post('/telegram/webhook', async (req, res) => {
+  const update = req.body
+  
+  if (!update.message?.text) {
+    res.status(200).send('OK')
+    return
+  }
+  
+  const text = update.message.text
+  const chatId = update.message.chat.id
+  
+  // Parse command
+  if (text.startsWith('/project ')) {
+    const parts = text.slice(9).split(' ')
+    const projectName = parts[0]
+    const message = parts.slice(1).join(' ')
+    
+    await forwardToProject(projectName, message, chatId)
+  } else if (text.startsWith('/new_session ')) {
+    const projectName = text.slice(13).trim()
+    await createNewSession(projectName, chatId)
+  }
+  
+  res.status(200).send('OK')
+})
+
+async function forwardToProject(projectName: string, message: string, chatId: string) {
+  const project = PROJECTS[projectName]
+  if (!project) {
+    await sendTelegramMessage(chatId, `❌ Project not found: ${projectName}`)
+    return
+  }
+  
+  // Get last session for project
+  const sessions = await fetch(`http://localhost:4096/session?directory=${project.directory}`).then(r => r.json())
+  const lastSession = sessions.result[0]
+  
+  if (!lastSession) {
+    await sendTelegramMessage(chatId, `❌ No active session for ${projectName}`)
+    return
+  }
+  
+  // Forward message to OpenCode
+  await fetch(`http://localhost:4096/session/${lastSession.id}/message`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ parts: [{ type: 'text', text: message }] })
+  })
+  
+  await sendTelegramMessage(chatId, `✅ Message sent to ${projectName}`)
+}
+
+async function createNewSession(projectName: string, chatId: string) {
+  const project = PROJECTS[projectName]
+  if (!project) {
+    await sendTelegramMessage(chatId, `❌ Project not found: ${projectName}`)
+    return
+  }
+  
+  const result = await fetch('http://localhost:4096/session', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ directory: project.directory })
+  }).then(r => r.json())
+  
+  await sendTelegramMessage(chatId, `✅ New session created for ${projectName}\nSession ID: ${result.id}`)
+}
+
+async function sendTelegramMessage(chatId: string, text: string) {
+  await fetch(`https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ chat_id: chatId, text })
+  })
+}
+
+app.listen(3000, () => console.log('Webhook server running on port 3000'))
+```
+
+### Deployment
+
+1. **Deploy to VPS/Cloud**:
+   ```bash
+   npm install express
+   node webhook-server.ts
+   ```
+
+2. **Set webhook** (using ngrok for localhost):
+   ```bash
+   ngrok http 3000
+   curl -X POST https://your-ngrok-url/set-webhook
+   ```
+
+3. **Test**:
+   ```
+   Send /project opencode_telegram_hook hello
+   ```
+
+### Benefits
+
+- ✅ **No 409 conflicts**: External server handles Telegram API
+- ✅ **Bidirectional communication**: Telegram ↔ OpenCode
+- ✅ **Scalable**: Can handle multiple projects
+- ✅ **Reliable**: Persistent server outside OpenCode
 
 ---
 
