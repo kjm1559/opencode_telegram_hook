@@ -205,27 +205,36 @@ export class TelegramClient {
       const offset = this.lastUpdateId + 1
       const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`
       
-      console.log("[Telegram] getUpdates URL:", url.substring(0, 50) + "...")
+      const raw = await this.shell`curl -s ${url}`.nothrow()
+      const text = await raw.text()
       
-      const shellResult = await this.shell`curl -s ${url}`.nothrow()
-      const rawText = await shellResult.text()
-      
-      console.log("[Telegram] getUpdates raw response:", rawText.substring(0, 200))
-      
-      if (!rawText || rawText.trim() === "") {
-        console.error("[Telegram] getUpdates returned empty response")
+      if (!text || text.trim() === "") {
         return []
       }
       
-      const result = JSON.parse(rawText)
-      
-      console.log("[Telegram] getUpdates parsed:", result.ok ? "OK" : "FAILED")
+      const result = JSON.parse(text)
       
       if (!result || !result.ok) {
-        console.error(`[Telegram] getUpdates failed: ${result?.result?.description || 'unknown error'}`)
+        if (result?.error_code === 409) {
+          this.consecutive409Count++
+          
+          if (this.consecutive409Count === 1) {
+            console.warn("[Telegram] 409 Conflict - Multiple instances detected")
+          }
+          
+          if (this.consecutive409Count % 10 === 0) {
+            console.warn("[Telegram] 409 Conflict persistent - Stop other instances or use different bot token")
+          }
+          
+          return []
+        }
+        
+        console.error(`[Telegram] getUpdates failed: ${result?.result?.description || result?.description || 'unknown error'}`)
         return []
       }
 
+      this.consecutive409Count = 0
+      
       if (result.ok && Array.isArray(result.result)) {
         for (const update of result.result) {
           if (update.update_id > this.lastUpdateId) {
@@ -233,15 +242,12 @@ export class TelegramClient {
           }
         }
         
-        console.log(`[Telegram] Received ${result.result.length} update(s)`)
         return result.result
       }
 
-      console.error("[Telegram] getUpdates returned no updates")
       return []
     } catch (error: any) {
       console.error("[Telegram] Failed to get updates:", error.message)
-      console.error("[Telegram] Error stack:", error.stack)
       return []
     }
   }

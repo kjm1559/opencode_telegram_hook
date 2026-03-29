@@ -330,20 +330,24 @@ Plugin is now active and ready to receive events from OpenCode.`
 
 // Global polling function - single instance for all projects
 async function globalPollingLoop() {
+  // Only one instance should poll - use the first registered project's client
+  const firstProject = globalProjectRegistry.values().next().value
+  if (!firstProject) {
+    return
+  }
+  
   try {
-    for (const [projectKey, ctx] of globalProjectRegistry.entries()) {
-      const updates = await ctx.telegramClient.getUpdates()
+    const updates = await firstProject.telegramClient.getUpdates()
+    
+    for (const update of updates) {
+      if (!update.message?.text) continue
       
-      for (const update of updates) {
-        if (!update.message?.text) continue
-        
-        const parsedMessage = ctx.telegramClient.parseMessage(update.message.text)
-        const chatId = update.message.chat.id.toString()
-        
-        console.log(`[Polling] Received message from ${chatId}:`, parsedMessage)
-        
-        await processTelegramMessage(parsedMessage, chatId, ctx, updates[0]?.update_id)
-      }
+      const parsedMessage = firstProject.telegramClient.parseMessage(update.message.text)
+      const chatId = update.message.chat.id.toString()
+      
+      console.log(`[Polling] Received message from ${chatId}:`, parsedMessage)
+      
+      await processTelegramMessage(parsedMessage, chatId, firstProject, updates[0]?.update_id)
     }
   } catch (error) {
     console.error("[GlobalPolling] Error:", error)
