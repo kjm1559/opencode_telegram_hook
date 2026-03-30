@@ -2,6 +2,7 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 import { TelegramClient } from "./telegram-client"
 import { EventHandler } from "./event-handler"
 import { loadConfig, getProjectNameFromDirectory, type Config } from "./config"
+import { POLL_INTERVAL_MS } from "./utils"
 
 // Module-level state - shared across all plugin instances
 let sharedTelegramClient: TelegramClient | null = null
@@ -101,9 +102,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   // Initialize shared TelegramClient once
   if (!sharedTelegramClient) {
     sharedTelegramClient = new TelegramClient(config.telegram_bot_token, input.$)
-    // Start polling immediately (module-level, not instance-level)
-    setInterval(handlePolling, 3000).unref()
-    console.log("[Telegram] Polling started (module-level)")
+    setInterval(handlePolling, POLL_INTERVAL_MS).unref()
   }
   
   const telegramClient = sharedTelegramClient

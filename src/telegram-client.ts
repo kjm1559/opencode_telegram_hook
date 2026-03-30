@@ -1,4 +1,5 @@
 import z from "zod"
+import { escapeHtml, HTTP_CONFLICT, UPDATE_TIMEOUT } from "./utils"
 
 const TelegramMessageSchema = z.object({
   chat_id: z.union([z.string(), z.number()]),
@@ -23,12 +24,6 @@ export class TelegramClient {
   private readonly shell: any
   private lastUpdateId: number = 0
   private consecutive409Count: number = 0
-  private readonly MAX_CONFLICT_RETRIES: number = 5
-  private last409Time: number = 0
-  private readonly MIN_RETRY_INTERVAL: number = 5000
-  private webhookDeleted = false
-  private botStartWarningShown = false
-  private initialized = false
 
   constructor(botToken?: string, shell?: any) {
     this.botToken = botToken || process.env.TELEGRAM_BOT_TOKEN || ""
@@ -37,18 +32,6 @@ export class TelegramClient {
 
   getLastUpdateId(): number {
     return this.lastUpdateId
-  }
-
-  escapeHtml(text: string): string {
-    let result = text
-    
-    result = result.replace(/&/g, '&amp;')
-    result = result.replace(/</g, '&lt;')
-    result = result.replace(/>/g, '&gt;')
-    result = result.replace(/"/g, '&quot;')
-    result = result.replace(/'/g, '&#39;')
-    
-    return result
   }
 
   async sendMessage(params: Telegram.SendMessageParams): Promise<boolean> {
@@ -191,7 +174,7 @@ export class TelegramClient {
 
     try {
       const offset = this.lastUpdateId + 1
-      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=30`
+      const url = `https://api.telegram.org/bot${this.botToken}/getUpdates?offset=${offset}&timeout=${UPDATE_TIMEOUT}`
       
       const raw = await this.shell`curl -s ${url}`.nothrow()
       const text = await raw.text()
@@ -203,7 +186,7 @@ export class TelegramClient {
       const result = JSON.parse(text)
       
       if (!result || !result.ok) {
-        if (result?.error_code === 409) {
+        if (result?.error_code === HTTP_CONFLICT) {
           this.consecutive409Count++
           
           if (this.consecutive409Count === 1) {
@@ -239,41 +222,4 @@ export class TelegramClient {
       return []
     }
   }
-
-  async setWebhook(webhookUrl: string, allowedUpdates?: string[]): Promise<boolean> {
-    try {
-      const url = `https://api.telegram.org/bot${this.botToken}/setWebhook`
-      
-      const params: any = { url: webhookUrl }
-      if (allowedUpdates) {
-        params.allowed_updates = allowedUpdates
-      }
-
-      const response = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(params),
-      })
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`)
-      }
-
-      const data = await response.json()
-      return data.result
-    } catch (error) {
-      console.error("[Telegram] Failed to set webhook:", error)
-      return false
-    }
-  }
-}
-
-export async function sendTelegramMessage(params: Telegram.SendMessageParams): Promise<boolean> {
-  const client = new TelegramClient()
-  return await client.sendMessage(params)
-}
-
-export function parseTelegramMessage(text: string): Telegram.ParsedMessage {
-  const client = new TelegramClient()
-  return client.parseMessage(text)
 }

@@ -1,11 +1,11 @@
 import { type Telegram } from "./telegram-client"
 import { type Config } from "./config"
+import { escapeHtml, THROTTLE_MS, MAX_TEXT_LENGTH, MAX_ERROR_LENGTH, MAX_OUTPUT_LENGTH, MAX_DIR_LENGTH, MAX_WORKTREE_LENGTH, MAX_REQUEST_LENGTH, MAX_DIFF_LENGTH, MAX_MESSAGE_LENGTH, TRACKED_EVENTS } from "./utils"
 
 type TelegramSendFn = (params: Telegram.SendMessageParams) => Promise<boolean>
 
 export class EventHandler {
   private readonly throttledEvents = new Map<string, number>()
-  private readonly throttleMs = 1000
   private readonly telegramClient: TelegramSendFn
   private readonly config: Config
 
@@ -26,23 +26,11 @@ export class EventHandler {
       telegramClient: TelegramSendFn
     },
   ) {
-    console.log("[EventHandler] ======== EVENT RECEIVED ========")
-    console.log("[EventHandler] Received event:", event.type)
-    console.log("[EventHandler] Event title:", event.title)
-    console.log("[EventHandler] Project:", projectName)
-    console.log("[EventHandler] Chat IDs received:", chatIds)
-    console.log("[EventHandler] Chat IDs count:", chatIds.length)
-    console.log("[EventHandler] Session ID:", event.session_id || event.sessionId || event.properties?.session_id)
-    console.log("[EventHandler] Event payload keys:", Object.keys(event.payload || {}))
-
     if (!event.type || typeof event.type !== 'string') {
-      console.log("[EventHandler] SKIPPING: Invalid or missing event.type")
-      console.log("[EventHandler] Event structure:", JSON.stringify(event, null, 2))
       return
     }
 
     if (chatIds.length === 0) {
-      console.log("  [EventHandler] SKIPPING: No chat IDs available")
       return
     }
 
@@ -96,7 +84,7 @@ export class EventHandler {
       const argKeys = Object.keys(args).filter(k => k !== 'tool')
       
       const lines = [
-        `<b>[${this.escapeHtml(projectName)}]</b> 🔧 Tool: <code>${this.escapeHtml(toolName)}</code>`
+        `<b>[${escapeHtml(projectName)}]</b> 🔧 Tool: <code>${escapeHtml(toolName)}</code>`
       ]
       
       if (argKeys.length > 0) {
@@ -104,7 +92,7 @@ export class EventHandler {
         for (const key of argKeys.slice(0, 5)) {
           const value = args[key]
           const valueStr = typeof value === 'string' ? value : JSON.stringify(value)
-          lines.push(`• <code>${this.escapeHtml(key)}</code>: ${this.escapeHtml(valueStr.substring(0, 100))}`)
+          lines.push(`• <code>${escapeHtml(key)}</code>: ${escapeHtml(valueStr.substring(0, 100))}`)
         }
       }
       
@@ -119,18 +107,18 @@ export class EventHandler {
         const toolName = event.tool || "unknown"
         
         const lines = [
-            `<b>[${this.escapeHtml(projectName)}]</b> ${icon} Tool: <code>${this.escapeHtml(toolName)}</code>`
+            `<b>[${escapeHtml(projectName)}]</b> ${icon} Tool: <code>${escapeHtml(toolName)}</code>`
         ]
         
         if (event.output?.output && typeof event.output.output === 'string') {
-            const output = event.output.output.substring(0, 500)
+            const output = event.output.output.substring(0, MAX_TEXT_LENGTH)
             lines.push(`\n<b>Output:</b>`)
-            lines.push(`<code>${this.escapeHtml(output)}</code>`)
+            lines.push(`<code>${escapeHtml(output)}</code>`)
         }
         
         if (event.output?.error) {
             lines.push(`\n<b>Error:</b>`)
-            lines.push(`<code>${this.escapeHtml(event.output.error.substring(0, 200))}</code>`)
+            lines.push(`<code>${escapeHtml(event.output.error.substring(0, MAX_ERROR_LENGTH))}</code>`)
         }
 
         lines.push("\n───────────\n")
@@ -142,11 +130,11 @@ export class EventHandler {
       const lines = [`[${projectName}] 💻 Command: ${cmd}`]
 
       if (event.output) {
-        lines.push(event.output.substring(0, 256))
+        lines.push(event.output.substring(0, MAX_OUTPUT_LENGTH))
       }
 
       lines.push("\n---\n")
-      return this.escapeHtml(lines.join("\n\n"))
+      return escapeHtml(lines.join("\n\n"))
     }
 
     if (event.type === "lsp.client.diagnostics") {
@@ -162,7 +150,7 @@ export class EventHandler {
         `\n---\n`,
       ]
 
-      return this.escapeHtml(lines.join("\n"))
+      return escapeHtml(lines.join("\n"))
     }
 
     if (event.type === "session.started") {
@@ -174,12 +162,12 @@ export class EventHandler {
             : "default"
         const message = `[${projectName}] 🚀 New session started
 
-Dir: ${dir.substring(0, 50)}...
-Worktree: ${worktree.substring(0, 30)}...
+Dir: ${dir.substring(0, MAX_DIR_LENGTH)}...
+Worktree: ${worktree.substring(0, MAX_WORKTREE_LENGTH)}...
 
 ---
 `
-        return this.escapeHtml(message)
+        return escapeHtml(message)
     }
 
     if (event.type === "session.status") {
@@ -189,7 +177,7 @@ Worktree: ${worktree.substring(0, 30)}...
 
 ---
 `
-        return this.escapeHtml(message)
+        return escapeHtml(message)
     }
 
     if (event.type === "session.diff") {
@@ -204,7 +192,7 @@ ${changes}
 
 ---
 `
-        return this.escapeHtml(message)
+        return escapeHtml(message)
     }
 
     if (event.type === "session.updated") {
@@ -219,17 +207,17 @@ ${changes}
         ]
         
         if (request) {
-            lines.push(`\n📝 User Request: ${request.substring(0, 200)}`)
+            lines.push(`\n📝 User Request: ${request.substring(0, MAX_ERROR_LENGTH)}`)
         }
         if (prompt) {
-            lines.push(`\n💡 Prompt: ${prompt.substring(0, 200)}`)
+            lines.push(`\n💡 Prompt: ${prompt.substring(0, MAX_ERROR_LENGTH)}`)
         }
         if (diff) {
-            lines.push(`\n⚡ Changes: ${JSON.stringify(diff, null, 2).substring(0, 256)}`)
+            lines.push(`\n⚡ Changes: ${JSON.stringify(diff, null, 2).substring(0, MAX_OUTPUT_LENGTH)}`)
         }
         
         lines.push("\n\n---\n")
-        return this.escapeHtml(lines.join("\n"))
+        return escapeHtml(lines.join("\n"))
     }
 
     if (event.type === "session.completed") {
@@ -239,14 +227,14 @@ See summary below for details.
 
 ---
 `
-      return this.escapeHtml(message)
+      return escapeHtml(message)
     }
 
     const message = `[${projectName}] [${event.type}]\n${event.title || "No title"}
 
 ---
 `
-    return this.escapeHtml(message)
+    return escapeHtml(message)
   }
 
   private formatMessageUpdate(event: any, projectName: string): string | null {
@@ -354,8 +342,8 @@ See summary below for details.
       if (role === "assistant") {
         const tokens = info.tokens?.total || 0
         const cost = info.cost || 0
-        const path = this.escapeHtml(info.path || "unknown path")
-        const escapedProjectName = this.escapeHtml(projectName)
+        const path = escapeHtml(info.path || "unknown path")
+        const escapedProjectName = escapeHtml(projectName)
         
         return `[${escapedProjectName}] 🤖 Agent completed message\n\n\`\`\`\nPath: ${path}\nTokens: ${tokens}\nCost: $${cost.toFixed(4)}\n\`\`\`\n\n---\n`
       }
@@ -391,35 +379,24 @@ See summary below for details.
       : content
     
     const lines = [
-      `<b>[${this.escapeHtml(projectName)}]</b> ${sender}:`
+      `<b>[${escapeHtml(projectName)}]</b> ${sender}:`
     ]
     
     if (truncated) {
-      lines.push(`\n\n${this.escapeHtml(truncated)}`)
+      lines.push(`\n\n${escapeHtml(truncated)}`)
     }
     
     lines.push("\n\n───────────\n")
     return lines.join("")
   }
 
-  private escapeHtml(text: string): string {
-    let result = text
-    result = result.replace(/\&/g, '&amp;')
-    result = result.replace(/</g, '&lt;')
-    result = result.replace(/>/g, '&gt;')
-    return result
-  }
-
   private async notify(chatId: string, text: string): Promise<boolean> {
     const now = Date.now()
     const last = this.throttledEvents.get(chatId) || 0
-
-    if (now - last < this.throttleMs) {
-      return false
-    }
-
+    if (now - last < THROTTLE_MS) return false
+    
     this.throttledEvents.set(chatId, now)
-
+    
     return await this.telegramClient({
       chat_id: chatId,
       text,
