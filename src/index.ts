@@ -46,57 +46,37 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     event: async ({ event }) => {
       console.log(`[Telegram Event] type: ${event.type}`)
       
-      // 작업 시작 시 요약 저장
-      if (event.type === "session.started") {
-        currentSummary = `프로젝트: ${projectName}\n작업 시작\n\n` +
-          (event.title ? `제목: ${event.title}\n` : "") +
-          (event.payload?.directory ? `디렉토리: ${event.payload.directory}\n` : "")
-        console.log(`[Telegram Event] Session started, summary: ${currentSummary}`)
+      // 작업 상태 추적
+      if (event.type === "session.updated" || event.type === "session.status") {
+        // 세션 업데이트 시 요약 저장
+        if (!currentSummary) {
+          currentSummary = `프로젝트: ${projectName}\n작업 시작\n\n` +
+            (event.title ? `제목: ${event.title}\n` : "") +
+            (event.payload?.directory ? `디렉토리: ${event.payload.directory}\n` : "")
+        }
+        console.log(`[Telegram Event] Session updated, summary: ${currentSummary}`)
       }
       
       // 작업 진행 시 요약 업데이트
-      if (event.type === "message.created" || event.type === "tool.execute.before") {
+      if (event.type === "message.updated" || event.type === "message.part.updated") {
+        // 메시지 업데이트 시 작업 내용 추가
         if (event.title) {
           currentSummary += `\n• ${event.title}\n`
           console.log(`[Telegram Event] Updated summary with: ${event.title}`)
         }
-      }
-      
-      // 작업 완료 시
-      if (event.type === "session.completed" || event.type === "session.finished") {
-        const summaryContent = currentSummary.trim() || `프로젝트: ${projectName}\n작업 완료`;
-        const summary = `
-<b>[${projectName}] 작업 완료</b>
-
-${summaryContent}
-
-✅ 작업이 완료되었습니다.
-        `.trim()
-        
-        console.log(`[Telegram Event] Sending completion message`)
-        await sendMessage(summary)
-        currentSummary = ""
-      }
-      
-      // 선택 필요 시
-      if (event.type === "permission.ask" || event.type === "command.execute.before") {
-        const summaryContent = currentSummary.trim() || `프로젝트: ${projectName}\n작업 중`;
-        const question = `
-<b>[${projectName}] 선택 필요</b>
-
-${summaryContent}
-
-⚠️ 작업 진행을 위해 선택이 필요합니다.
-        `.trim()
-        
-        console.log(`[Telegram Event] Sending choice message`)
-        await sendMessage(question)
       }
     },
 
     config: async () => {
       console.log(`[Telegram Plugin] Initialized for ${projectName}`)
       console.log(`  Chat ID: ${chatId}`)
+      
+      // 시작 시 테스트 메시지 전송
+      await sendMessage(`
+<b>[${projectName}] 플러그인 시작</b>
+
+테스트 메시지입니다.
+      `.trim())
     }
   }
 }
