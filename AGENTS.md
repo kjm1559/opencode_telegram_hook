@@ -2,59 +2,59 @@
 
 ## Git Workflow
 
-**AGENTS.md 수정 후 반드시 커밋 & 푸시**:
-- 이 파일에 변경사항이 있으면 즉시 `git add && git commit && git push`
-- Git 히스토리를 **메모리처럼 사용** — 과거 작업 내용, 결정 사항, 이슈 해결 과정을 커밋 메시지와 히스토리에서 추적
-- `git log --oneline -20` 또는 `git log -p AGENTS.md` 로 변경 이력 확인 가능
+**Always commit and push after modifying AGENTS.md**:
+- Immediately run `git add && git commit && git push` when this file is changed
+- Use Git history as **memory** — track past work, decisions, and issue resolutions in commit messages and history
+- Check change history with `git log --oneline -20` or `git log -p AGENTS.md`
 
 ### 📝 Documentation Update Rule
 
-**설계 변경 시 README.md 동시 업데이트**:
-1. **AGENTS.md 수정 → README.md 업데이트 → 커밋 → 푸시** 순서로 진행
-2. README.md 는 사용자를 위한 문서이므로 설계 변경과 항상 일치해야 함
-3. 커밋 메시지에는 `docs:` 접두사 사용
-4. 푸시 전에 반드시 두 파일 모두 확인
+**Update README.md when design changes**:
+1. Follow sequence: **AGENTS.md → README.md → commit → push**
+2. README.md is user documentation, so it must always match the design
+3. Use `docs:` prefix in commit messages
+4. Check both files before pushing
 
-**예시**:
+**Example**:
 ```bash
-# 1. AGENTS.md 수정 완료
-# 2. README.md 업데이트
-# 3. 커밋
+# 1. AGENTS.md modification complete
+# 2. Update README.md
+# 3. Commit
 git add AGENTS.md README.md
 git commit -m "docs: Update architecture documentation\n\n- Update AGENTS.md with new design\n- Sync README.md to match current architecture"
 
-# 4. 푸시 전에 확인
+# 4. Check before push
 git show --stat
 
-# 5. 푸시
+# 5. Push
 git push
 ```
 
-### ⚠️ **보안 경고: 민감한 정보 절대 커밋 금지**
+### ⚠️ **Security Warning: Never Commit Sensitive Information**
 
-**절대 Git 에 커밋하지 말 것**:
+**Never commit to Git**:
 - ❌ Bot Token (`TELEGRAM_BOT_TOKEN`)
 - ❌ API Keys, Secrets
 - ❌ Passwords, Credentials
-- ❌ Chat IDs (개인 정보일 수 있음)
-- ❌ `.env` 파일
-- ❌ `config.json` (토큰 포함 시)
+- ❌ Chat IDs (may be personal information)
+- ❌ `.env` files
+- ❌ `config.json` (if it contains tokens)
 
-**올바른 방법**:
-- ✅ 환경 변수로 관리 (`process.env.TELEGRAM_BOT_TOKEN`)
-- ✅ `.gitignore` 에 `.env`, `*.json` 추가
-- ✅ 테스트 파일에 토큰 하드코딩 금지
-- ✅ 실수하면 즉시 `git filter-repo` 로 히스토리 정화
+**Correct method**:
+- ✅ Manage via environment variables (`process.env.TELEGRAM_BOT_TOKEN`)
+- ✅ Add `.env`, `*.json` to `.gitignore`
+- ✅ Never hardcode tokens in test files
+- ✅ Immediately clean history with `git filter-repo` if mistaken
 
-**토큰이 노출되었을 때**:
-1. `git filter-repo --invert-paths --path <파일명>` 로 히스토리 정화
-2. `git push --force` 로 원격지 업데이트
-3. Telegram BotFather 에서 새 토큰 재발행
-4. 기존 토큰은 자동으로 무효화됨
+**When a token is exposed**:
+1. Clean history with `git filter-repo --invert-paths --path <filename>`
+2. Update remote with `git push --force`
+3. Reissue new token in Telegram BotFather
+4. Old token is automatically invalidated
 
 ## Debugging
 
-콘솔 로그 확인:
+Check console logs:
 ```bash
 [EventHandler] properties.info structure: {
   id: "...",
@@ -66,41 +66,41 @@ git push
 
 ## Event Structure Reference
 
-**OpenCode 레포지토리 위치**: `../opencode/`
-- 실제 OpenCode 이벤트 구조 확인
-- `message.created`, `session.updated` 등 이벤트 패턴 분석
+**OpenCode repository location**: `../opencode/`
+- Check actual OpenCode event structure
+- Analyze event patterns like `message.created`, `session.updated`
 
 ### Event Data Location
 
-실제 이벤트 데이터는 `event.properties.info` 안에 있습니다:
+Actual event data is in `event.properties.info`:
 ```typescript
-// ✅ 올바른 접근
+// ✅ Correct access
 const content = event.properties.info.request.content;
 const status = event.properties.info.status;
 
-// ❌ 잘못된 접근 (비어있음)
+// ❌ Wrong access (empty)
 const content = event.payload.request.content;
 ```
 
 ## Plugin Configuration
 
-- **Telegram Chat ID**: 환경 변수 `TELEGRAM_CHAT_ID` 또는 `config.json` 에서 설정
-- **Bot Token**: `config.json` 의 `telegram_bot_token`
-- **Projects**: `config.json` 의 `projects` 배열
+- **Telegram Chat ID**: Set via environment variable `TELEGRAM_CHAT_ID` or in `config.json`
+- **Bot Token**: `telegram_bot_token` in `config.json`
+- **Projects**: `projects` array in `config.json`
 
 ## Testing
 
 ```bash
-# Bot 토큰 검증
+# Verify bot token
 TELEGRAM_BOT_TOKEN=$TELEGRAM_BOT_TOKEN bun run verify-bot.ts
 
-# 빌드
+# Build
 bun run build
 
-# 테스트
+# Test
 bun test
 ```
 
 ## Problem History
 
-상세한 문제 및 해결사는 `HISTORY.md` 를 참조하세요.
+See `HISTORY.md` for detailed problems and solutions.
