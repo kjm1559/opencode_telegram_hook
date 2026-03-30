@@ -88,9 +88,8 @@ async function handlePolling() {
 }
 
 // MODULE-LEVEL INITIALIZATION - runs ONCE when module loads
-function initializePlugin() {
-  const config = loadConfig()
-  sharedTelegramClient = new TelegramClient(config.telegram_bot_token, undefined as any)
+function initializePlugin(botToken: string, shellInstance: any) {
+  sharedTelegramClient = new TelegramClient(botToken, shellInstance)
   
   // Start single polling thread - runs forever
   setInterval(handlePolling, POLL_INTERVAL_MS).unref()
@@ -99,17 +98,20 @@ function initializePlugin() {
   console.log(`  Polling interval: ${POLL_INTERVAL_MS}ms`)
 }
 
-// Initialize immediately when module is loaded
-initializePlugin()
-
 export const TelegramPlugin: Plugin = async (input: PluginInput) => {
-  const { client, directory } = input
-  const projectName = getProjectNameFromDirectory(directory, loadConfig())
+  const { client, directory, $ } = input
+  const config = loadConfig()
+  const projectName = getProjectNameFromDirectory(directory, config)
+  
+  // Initialize plugin on first instance
+  if (!sharedTelegramClient) {
+    initializePlugin(config.telegram_bot_token, $)
+  }
   
   const chatIds = Array.from(
     new Set([
       process.env.TELEGRAM_CHAT_ID || "",
-      ...(loadConfig().allowed_chat_ids || []),
+      ...(config.allowed_chat_ids || []),
     ]),
   ).filter(Boolean)
 
@@ -122,7 +124,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     chatIds
   })
 
-  const eventHandler = new EventHandler(sharedTelegramClient!.sendMessage.bind(sharedTelegramClient), loadConfig())
+  const eventHandler = new EventHandler(sharedTelegramClient!.sendMessage.bind(sharedTelegramClient), config)
 
   return {
     event: async ({ event }) => {
