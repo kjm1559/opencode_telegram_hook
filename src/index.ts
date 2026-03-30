@@ -6,6 +6,7 @@ import { POLL_INTERVAL_MS } from "./utils"
 
 // Module-level state - shared across all plugin instances
 let sharedTelegramClient: TelegramClient | null = null
+let pollingStarted = false
 const projectRegistry = new Map<string, {
   projectName: string
   directory: string
@@ -103,8 +104,9 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const config = loadConfig()
   const projectName = getProjectNameFromDirectory(directory, config)
   
-  // Initialize plugin on first instance
-  if (!sharedTelegramClient) {
+  // Initialize plugin on first instance (race-condition safe)
+  if (!pollingStarted) {
+    pollingStarted = true
     initializePlugin(config.telegram_bot_token, $)
   }
   
