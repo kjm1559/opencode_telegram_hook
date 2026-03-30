@@ -87,40 +87,47 @@ async function handlePolling() {
   }
 }
 
+// MODULE-LEVEL INITIALIZATION - runs ONCE when module loads
+function initializePlugin() {
+  const config = loadConfig()
+  sharedTelegramClient = new TelegramClient(config.telegram_bot_token, undefined as any)
+  
+  // Start single polling thread - runs forever
+  setInterval(handlePolling, POLL_INTERVAL_MS).unref()
+  
+  console.log("[Telegram Plugin] Initialized (module-level)")
+  console.log(`  Polling interval: ${POLL_INTERVAL_MS}ms`)
+}
+
+// Initialize immediately when module is loaded
+initializePlugin()
+
 export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const { client, directory } = input
-  const config = loadConfig()
-  const projectName = getProjectNameFromDirectory(directory, config)
+  const projectName = getProjectNameFromDirectory(directory, loadConfig())
   
   const chatIds = Array.from(
     new Set([
       process.env.TELEGRAM_CHAT_ID || "",
-      ...(config.allowed_chat_ids || []),
+      ...(loadConfig().allowed_chat_ids || []),
     ]),
   ).filter(Boolean)
-
-  // Initialize shared TelegramClient once
-  if (!sharedTelegramClient) {
-    sharedTelegramClient = new TelegramClient(config.telegram_bot_token, input.$)
-    setInterval(handlePolling, POLL_INTERVAL_MS).unref()
-  }
-  
-  const telegramClient = sharedTelegramClient
-  const eventHandler = new EventHandler(telegramClient.sendMessage.bind(telegramClient), config)
 
   // Register this project for routing
   projectRegistry.set(projectName, {
     projectName,
     directory,
     client,
-    telegramClient,
+    telegramClient: sharedTelegramClient!,
     chatIds
   })
+
+  const eventHandler = new EventHandler(sharedTelegramClient!.sendMessage.bind(sharedTelegramClient), loadConfig())
 
   return {
     event: async ({ event }) => {
       await eventHandler.handle(event, directory, projectName, chatIds, {
-        telegramClient: telegramClient.sendMessage.bind(telegramClient)
+        telegramClient: sharedTelegramClient!.sendMessage.bind(sharedTelegramClient)
       })
     },
 
