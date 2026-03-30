@@ -5,28 +5,41 @@ A plugin that sends notifications with work summaries to Telegram when OpenCode 
 ## Features
 
 ### Work Completion Notification (with Summary)
-```
-[project-name] Work Completed
 
-Project: project-name
-Work Started
-Title: work title
-• Work step 1
-• Work step 2
+When work is completed, the plugin sends a detailed summary:
 
-✅ Work has been completed.
 ```
+[project-name] 작업 완료
+
+제목: 작업 제목
+
+작업 내용 요약
+
+📝 변경 사항:
+• file1.ts
+• file2.ts
+
+✅ 작업이 완료되었습니다.
+```
+
+**Summary includes:**
+- Work title and description
+- File changes (added/modified/deleted)
+- Code statistics (additions/deletions)
+- Affected files list
 
 ### Choice Required Notification (with Summary)
+
+When user choice is needed:
+
 ```
-[project-name] Choice Required
+[project-name] 선택 필요
 
-Project: project-name
-Work Started
-Title: work title
-• Work step 1
+제목: 작업 제목
 
-⚠️ A choice is needed to proceed with work.
+작업 내용 요약
+
+⚠️ 작업을 계속하기 위해 선택이 필요합니다.
 ```
 
 ## Installation
@@ -72,6 +85,13 @@ Notifications will be sent to Telegram when work is completed or when a choice i
 - Event-driven (no polling)
 - Direct Telegram API calls
 - No locks, no state management
+- Summary generation via OpenCode's built-in summary agent
+
+### Components
+
+- **summary-accessor.ts**: Extracts summaries from OpenCode events
+- **message-formatter.ts**: Formats summaries into Telegram messages
+- **index.ts**: Main plugin with event handlers
 
 ## Events
 
