@@ -46,23 +46,51 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
     event: async ({ event }) => {
       console.log(`[Telegram Event] type: ${event.type}`)
       
-      // 작업 상태 추적
-      if (event.type === "session.updated" || event.type === "session.status") {
-        // 세션 업데이트 시 요약 저장
-        if (!currentSummary) {
-          currentSummary = `프로젝트: ${projectName}\n작업 시작\n\n` +
-            (event.title ? `제목: ${event.title}\n` : "") +
-            (event.payload?.directory ? `디렉토리: ${event.payload.directory}\n` : "")
+      // session.status 이벤트로 작업 완료 감지 (status.type === "idle")
+      if (event.type === "session.status") {
+        const status = event.properties?.status
+        if (status?.type === "idle" && currentSummary) {
+          // 작업 완료 - 메시지 전송
+          console.log(`[Telegram Event] Session completed (idle), sending summary`)
+          const completionMessage = `
+<b>[${projectName}] 작업 완료</b>
+
+${currentSummary}
+
+✅ 작업이 완료되었습니다.
+          `.trim()
+          await sendMessage(completionMessage)
+          currentSummary = ""
+        } else if (status?.type === "busy" && !currentSummary) {
+          // 작업 시작 - 요약 초기화
+          const info = event.properties?.info
+          if (info) {
+            currentSummary = `프로젝트: ${projectName}\n작업 시작\n\n` +
+              (info.title ? `제목: ${info.title}\n` : "") +
+              (info.directory ? `디렉토리: ${info.directory}\n` : "")
+            console.log(`[Telegram Event] Session started, summary: ${currentSummary}`)
+          }
         }
-        console.log(`[Telegram Event] Session updated, summary: ${currentSummary}`)
+        return
+      }
+      
+      // session.updated 이벤트로 세션 정보 수집
+      if (event.type === "session.updated") {
+        const info = event.properties?.info
+        if (!currentSummary && info) {
+          currentSummary = `프로젝트: ${projectName}\n작업 시작\n\n` +
+            (info.title ? `제목: ${info.title}\n` : "") +
+            (info.directory ? `디렉토리: ${info.directory}\n` : "")
+          console.log(`[Telegram Event] Session updated, summary: ${currentSummary}`)
+        }
       }
       
       // 작업 진행 시 요약 업데이트
       if (event.type === "message.updated" || event.type === "message.part.updated") {
-        // 메시지 업데이트 시 작업 내용 추가
-        if (event.title) {
-          currentSummary += `\n• ${event.title}\n`
-          console.log(`[Telegram Event] Updated summary with: ${event.title}`)
+        const info = event.properties?.info
+        if (info?.title) {
+          currentSummary += `\n• ${info.title}\n`
+          console.log(`[Telegram Event] Updated summary with: ${info.title}`)
         }
       }
     },

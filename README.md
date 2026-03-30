@@ -75,8 +75,23 @@ Notifications will be sent to Telegram when work is completed or when a choice i
 
 ## Events
 
-### session.completed / session.finished
+### session.status (status.type === "idle")
 Sends notification when work is completed
 
-### permission.ask / command.execute.before
-Sends notification when a choice is required
+**Note**: OpenCode does NOT emit `session.completed` or `session.finished`. Session completion is signaled by `session.status` event with `status.type === "idle"`.
+
+### session.status (status.type === "busy")
+Initializes work summary when work starts
+
+### session.updated
+Collects session information (title, directory)
+
+### message.updated / message.part.updated
+Updates work summary with progress
+
+## Troubleshooting
+
+**Completion message not sent?**
+- Check console logs for `[Telegram Event] type: session.status`
+- Verify `status.type === "idle"` is being triggered
+- Ensure `TELEGRAM_BOT_TOKEN` and `TELEGRAM_CHAT_ID` are set correctly
