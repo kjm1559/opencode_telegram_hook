@@ -152,11 +152,7 @@ if (sessionID) resetForSession(sessionID)
 
 ### 파일 변경 추적
 
-`session.diff`와 `session.updated` 모두 신뢰할 수 없는 파일 변경 소스입니다:
-- `session.diff`: 세션 전체 누적 diff (실제 변경되지 않은 파일 포함)
-- `session.updated.info.summary.diffs`: 항상 비어 있음
-
-대신 `tool.execute.after` 훅의 `output.metadata.filediff`를 사용합니다. edit/write 도구가 파일을 변경할 때 정확한 diff 메타데이터를 포함하므로, 실제로 변경된 파일만 추적됩니다.
+`tool.execute.after` 훅의 `output.metadata.filediff`를 사용합니다. edit/write 도구가 파일 변경 시 정확한 diff 메타데이터를 포함하므로, 실제로 변경된 파일만 추적됩니다.
 
 ## Troubleshooting
 

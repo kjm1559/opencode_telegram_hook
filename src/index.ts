@@ -1,20 +1,74 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 
-type ToolUsage = {
-  tool: string
-  input: string
-}
-
-type WorkReport = {
-  tools: ToolUsage[]
-  files: string[]
-}
+type ToolUsage = { tool: string; input: string }
+type WorkReport = { tools: ToolUsage[]; files: string[] }
 
 const MSG_CHOICE_FALLBACK = (name: string) =>
   `<b>[${name}] 선택 필요</b>\n\n⚠️ 작업을 계속하기 위해 선택이 필요합니다.`
 
 const MSG_CONNECTED = (name: string) =>
   `<b>[${name}] Telegram 플러그인 연결됨</b>\n\n작업 완료 및 선택 알림을 Telegram 으로 전송합니다.`
+
+const IDLE_DEBOUNCE_MS = 8000
+
+function truncate(s: string, limit: number): string {
+  return s.length <= limit ? s : s.slice(0, limit) + "…"
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+}
+
+function summarizeToolInput(tool: string, args: any): string {
+  if (!args) return ""
+
+  switch (tool) {
+    case "edit": {
+      const file = args.filePath ?? args.file ?? ""
+      if (!file) return ""
+      const oldStr = args.oldString
+      if (typeof oldStr === "string" && oldStr.length > 0) {
+        return `${file} — "${truncate(oldStr.split("\n")[0], 40)}"`
+      }
+      return file
+    }
+    case "write":
+      return args.filePath ?? args.file ?? ""
+    case "read": {
+      const file = args.filePath ?? args.file ?? ""
+      if (!file) return ""
+      const parts = [file]
+      if (args.offset) parts.push(`L${args.offset}`)
+      if (args.limit) parts.push(`+${args.limit}`)
+      return parts.join(" ")
+    }
+    case "bash":
+      return args.command ? truncate(args.command, 80) : ""
+    case "glob":
+    case "grep":
+      return args.pattern ? args.pattern : ""
+    case "task":
+      return args.description ? truncate(args.description, 80) : ""
+    default: {
+      const hint = args.file ?? args.path ?? args.command ?? args.query ?? args.description
+      if (typeof hint === "string") return truncate(hint, 80)
+      const keys = Object.keys(args).slice(0, 3)
+      return keys.length > 0 ? keys.join(", ") : ""
+    }
+  }
+}
+
+function buildCompletionMessage(r: WorkReport, name: string): string {
+  const escapedName = escapeHtml(name)
+
+  const toolSection = r.tools.length > 0
+    ? `🔧 사용된 도구 (${r.tools.length}개):\n${r.tools.map((t, i) => `  ${i + 1}. <code>${escapeHtml(t.tool)}</code>${t.input ? ` — ${escapeHtml(t.input)}` : ""}`).join("\n")}\n\n`
+    : ""
+
+  const fileSection = `📝 변경 파일 (${r.files.length}개):\n${r.files.map((f) => `• ${escapeHtml(f)}`).join("\n")}`
+
+  return `<b>[${escapedName}] 작업 완료</b>\n\n${toolSection}${fileSection}\n\n✅ 작업이 완료되었습니다.`
+}
 
 export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   const botToken = process.env.TELEGRAM_BOT_TOKEN || ""
@@ -32,7 +86,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   let currentSessionID: string | null = null
   let sending = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
-  const IDLE_DEBOUNCE_MS = 8000
 
   async function send(text: string) {
     try {
@@ -71,14 +124,18 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   function trySendCompletion() {
     console.log(`[Telegram] trySend: sending=${sending}, tools=${report.tools.length}, files=${report.files.length}`)
-    if (sending) return
-    if (report.tools.length === 0 && report.files.length === 0) return
+    if (sending || (report.tools.length === 0 && report.files.length === 0)) return
+
     sending = true
     const snapshot = { tools: [...report.tools], files: [...report.files] }
     report = { tools: [], files: [] }
     const msg = buildCompletionMessage(snapshot, projectName)
     console.log(`[Telegram] sending: ${msg.substring(0, 100)}...`)
-    send(msg).then(ok => console.log(`[Telegram] sent: ${ok}`)).catch(e => console.error(`[Telegram] error:`, e)).finally(() => { sending = false })
+
+    send(msg)
+      .then(ok => console.log(`[Telegram] sent: ${ok}`))
+      .catch(e => console.error(`[Telegram] error:`, e))
+      .finally(() => { sending = false })
   }
 
   return {
@@ -92,11 +149,8 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
         case "session.status": {
           const type = event.properties?.status?.type
           console.log(`[Telegram] session.status: ${type}`)
-          if (type === "busy") {
-            cancelScheduledSend()
-          } else if (type === "idle") {
-            scheduleSendCompletion()
-          }
+          if (type === "busy") cancelScheduledSend()
+          else if (type === "idle") scheduleSendCompletion()
           break
         }
         case "session.idle":
@@ -114,20 +168,16 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     "tool.execute.before": async (input, output) => {
       if (input.sessionID?.startsWith("ses_")) resetForSession(input.sessionID)
       if (input.tool) {
-        const summary = summarizeToolInput(input.tool, output?.args)
-        report.tools.push({ tool: input.tool, input: summary })
+        report.tools.push({ tool: input.tool, input: summarizeToolInput(input.tool, output?.args) })
         console.log(`[Telegram] tool.execute.before: ${input.tool} (${report.tools.length} total)`)
       }
     },
 
     "tool.execute.after": async (input, output) => {
       const filediff = output?.metadata?.filediff
-      if (filediff?.file) {
-        const file = filediff.file
-        if (!report.files.includes(file)) {
-          report.files.push(file)
-          console.log(`[Telegram] tool.execute.after: ${input.tool} changed ${file}`)
-        }
+      if (filediff?.file && !report.files.includes(filediff.file)) {
+        report.files.push(filediff.file)
+        console.log(`[Telegram] tool.execute.after: ${input.tool} changed ${filediff.file}`)
       }
     },
 
@@ -136,78 +186,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
       send(MSG_CONNECTED(projectName)).then(ok => console.log(`[Telegram] connected: ${ok}`))
     },
   }
-}
-
-function summarizeToolInput(tool: string, args: any): string {
-  if (!args) return ""
-
-  switch (tool) {
-    case "edit": {
-      const file = args.filePath ?? args.file ?? ""
-      if (!file) return ""
-      const oldStr = args.oldString
-      if (typeof oldStr === "string" && oldStr.length > 0) {
-        const preview = truncate(oldStr.split("\n")[0], 40)
-        return `${file} — "${preview}"`
-      }
-      return file
-    }
-    case "write": {
-      const file = args.filePath ?? args.file ?? ""
-      return file
-    }
-    case "read": {
-      const file = args.filePath ?? args.file ?? ""
-      if (!file) return ""
-      const parts = [file]
-      if (args.offset) parts.push(`L${args.offset}`)
-      if (args.limit) parts.push(`+${args.limit}`)
-      return parts.join(" ")
-    }
-    case "bash":
-      return args.command ? truncate(args.command, 80) : ""
-    case "glob":
-      return args.pattern ? args.pattern : ""
-    case "grep":
-      return args.pattern ? args.pattern : ""
-    case "task":
-      return args.description ? truncate(args.description, 80) : ""
-    default: {
-      const hint = args.file ?? args.path ?? args.command ?? args.query ?? args.description
-      if (typeof hint === "string") return truncate(hint, 80)
-      try {
-        const keys = Object.keys(args).slice(0, 3)
-        if (keys.length > 0) return keys.join(", ")
-      } catch { }
-      return ""
-    }
-  }
-}
-
-function truncate(s: string, limit: number): string {
-  if (s.length <= limit) return s
-  return s.slice(0, limit) + "…"
-}
-
-function escapeHtml(text: string): string {
-  return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-}
-
-function buildCompletionMessage(r: WorkReport, name: string): string {
-  const escapedName = escapeHtml(name)
-
-  let toolSection = ""
-  if (r.tools.length > 0) {
-    const tools = r.tools
-      .map((t, i) => `  ${i + 1}. <code>${escapeHtml(t.tool)}</code>${t.input ? ` — ${escapeHtml(t.input)}` : ""}`)
-      .join("\n")
-    toolSection = `🔧 사용된 도구 (${r.tools.length}개):\n${tools}\n\n`
-  }
-
-  const files = r.files.map((f) => `• ${escapeHtml(f)}`).join("\n")
-  const fileSection = `📝 변경 파일 (${r.files.length}개):\n${files}`
-
-  return `<b>[${escapedName}] 작업 완료</b>\n\n${toolSection}${fileSection}\n\n✅ 작업이 완료되었습니다.`
 }
 
 export default TelegramPlugin

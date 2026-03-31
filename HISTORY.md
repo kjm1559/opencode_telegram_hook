@@ -510,6 +510,21 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
 ---
 
+## 2026-03-31: Codebase Refactoring
+
+### Refactoring: Clean up and reorganize src/index.ts
+
+**Changes:**
+- 함수 순서 재배열: 유틸리티 함수(`truncate`, `escapeHtml`, `summarizeToolInput`)를 상단으로 이동하여 의존성 흐름 개선
+- `trySendCompletion`의 Promise 체인을 가독성 있게 분리
+- `summarizeToolInput`의 `glob`/`grep` 케이스 병합
+- 불필요한 `try-catch` 제거 (`Object.keys`는 예외를 던지지 않음)
+- 타입 정의 단일 라인으로 압축
+- `buildCompletionMessage`의 조건부 로직 간소화
+- 213줄 → 179줄 (코드량 16% 감소, 기능 변경 없음)
+
+---
+
 ## Common Patterns & Lessons Learned (Updated)
 
 ### Pattern 5: Session ID Identification
