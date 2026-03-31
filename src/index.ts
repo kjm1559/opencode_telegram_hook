@@ -42,19 +42,17 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   function extractSummary(event: any) {
     const summary = getSummaryFromEvent(event)
     if (!summary) return
+    const existingBody = workSummary?.body
     workSummary = summary
+    if (existingBody) workSummary.body = existingBody
     if (pendingCompletion) trySendCompletion()
   }
 
   function extractPartText(event: any) {
-    const part = event.properties?.part
-    const text = part?.text
-    const role = event.properties?.info?.role
-    console.log(`[DEBUG] message.part.updated: role=${role}, hasText=${!!text}, textPreview=${text ? text.substring(0, 50) : 'none'}`)
-    if (!text || role !== "assistant") return
+    const text = event.properties?.part?.text
+    if (!text) return
     if (!workSummary) workSummary = {}
     workSummary.body = text
-    console.log(`[DEBUG] workSummary.body set from assistant, pendingCompletion=${pendingCompletion}`)
     if (pendingCompletion) trySendCompletion()
   }
 
