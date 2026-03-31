@@ -4,10 +4,10 @@ type ToolUsage = { tool: string; input: string }
 type WorkReport = { tools: ToolUsage[]; files: string[] }
 
 const MSG_CHOICE_FALLBACK = (name: string) =>
-  `<b>[${name}] 선택 필요</b>\n\n⚠️ 작업을 계속하기 위해 선택이 필요합니다.`
+  `<b>[${name}] Choice Required</b>\n\n⚠️ A choice is required to continue working.`
 
 const MSG_CONNECTED = (name: string) =>
-  `<b>[${name}] Telegram 플러그인 연결됨</b>\n\n작업 완료 및 선택 알림을 Telegram 으로 전송합니다.`
+  `<b>[${name}] Telegram Plugin Connected</b>\n\nSends session completion and choice alerts via Telegram.`
 
 const IDLE_DEBOUNCE_MS = 8000
 
@@ -62,18 +62,18 @@ function buildCompletionMessage(r: WorkReport, name: string): string {
   const escapedName = escapeHtml(name)
 
   if (r.tools.length === 0 && r.files.length === 0) {
-    return `<b>[${escapedName}] 작업 완료</b>\n\n✅ 작업이 완료되었습니다.`
+    return `<b>[${escapedName}] Session Complete</b>\n\n✅ Session complete.`
   }
 
   const toolSection = r.tools.length > 0
-    ? `🔧 사용된 도구 (${r.tools.length}개):\n${r.tools.map((t, i) => `  ${i + 1}. <code>${escapeHtml(t.tool)}</code>${t.input ? ` — ${escapeHtml(t.input)}` : ""}`).join("\n")}\n\n`
+    ? `🔧 Tools Used (${r.tools.length}):\n${r.tools.map((t, i) => `  ${i + 1}. <code>${escapeHtml(t.tool)}</code>${t.input ? ` — ${escapeHtml(t.input)}` : ""}`).join("\n")}\n\n`
     : ""
 
   const fileSection = r.files.length > 0
-    ? `📝 변경 파일 (${r.files.length}개):\n${r.files.map((f) => `• ${escapeHtml(f)}`).join("\n")}`
+    ? `📝 Changed Files (${r.files.length}):\n${r.files.map((f) => `• ${escapeHtml(f)}`).join("\n")}`
     : ""
 
-  return `<b>[${escapedName}] 작업 완료</b>\n\n${toolSection}${fileSection}\n✅ 작업이 완료되었습니다.`
+  return `<b>[${escapedName}] Session Complete</b>\n\n${toolSection}${fileSection}\n✅ Session complete.`
 }
 
 export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {

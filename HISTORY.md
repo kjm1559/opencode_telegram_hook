@@ -544,6 +544,25 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
 ---
 
+## 2026-03-31: English Localization
+
+### Localization: Convert all user-facing messages and documentation to English
+
+**Changes:**
+- **src/index.ts**: All Telegram messages converted to English
+  - `작업 완료` → `Session Complete`
+  - `사용된 도구 (N개)` → `Tools Used (N)`
+  - `변경 파일 (N개)` → `Changed Files (N)`
+  - `작업이 완료되었습니다.` → `Session complete.`
+  - `선택 필요` → `Choice Required`
+  - `작업을 계속하기 위해 선택이 필요합니다.` → `A choice is required to continue working.`
+  - `Telegram 플러그인 연결됨` → `Telegram Plugin Connected`
+  - `작업 완료 및 선택 알림을 Telegram 으로 전송합니다.` → `Sends session completion and choice alerts via Telegram.`
+- **README.md**: Full English translation
+- **AGENTS.md**: Already in English, no changes needed
+
+---
+
 ## Common Patterns & Lessons Learned (Updated)
 
 ### Pattern 5: Session ID Identification
