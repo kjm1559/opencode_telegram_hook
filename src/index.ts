@@ -104,6 +104,11 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           scheduleSendCompletion()
           break
         case "session.diff": {
+          const diffSessionID = event.properties?.sessionID
+          if (diffSessionID !== currentSessionID) {
+            console.log(`[Telegram] session.diff: skipped (session mismatch: ${diffSessionID} !== ${currentSessionID})`)
+            break
+          }
           const diff = event.properties?.diff
           console.log(`[Telegram] session.diff: files=${diff?.length || 0}`)
           if (diff?.length) {
