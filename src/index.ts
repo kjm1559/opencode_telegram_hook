@@ -110,27 +110,19 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       if (event.type === "session.updated" || event.type === "message.updated") {
         try {
           const summary = getSummaryFromEvent(event)
-          console.log(`[DEBUG] ${event.type}: summary=${summary ? 'exists' : 'null'}, body=${summary?.body ? summary.body.substring(0, 30) + '...' : 'empty'}`)
-          if (summary && summary.body) {
+          console.log(`[DEBUG] ${event.type}: summary=${summary ? 'exists' : 'null'}, body=${summary?.body ? summary.body.substring(0, 30) + '...' : 'empty'}, diffs=${summary?.diffs?.length || 0}`)
+          
+          if (summary) {
+            // body 가 없으면 diffs 로 요약 생성
+            if (!summary.body && summary.diffs && summary.diffs.length > 0) {
+              summary.body = `변경 파일 ${summary.diffs.length}개:\n${summary.diffs.map(d => `- ${d.file}`).join('\n')}`
+            }
+            
             workSummary = summary
-            console.log(`[Telegram Event] Extracted summary body: ${summary.body.substring(0, 50)}...`)
+            console.log(`[Telegram Event] Extracted summary: ${summary.body ? summary.body.substring(0, 50) : 'no body'}...`)
           }
         } catch (error) {
           console.error(`[Telegram Event] Error extracting summary:`, error)
-        }
-      }
-      
-      // message.part.updated 이벤트 처리 (요약 에이전트 응답)
-      if (event.type === "message.part.updated") {
-        const part = event.properties?.part
-        if (part?.type === "text" && part.text) {
-          console.log(`[DEBUG] message.part.updated: part.text=${part.text.substring(0, 50)}...`)
-          // 요약 에이전트 응답으로 workSummary 업데이트
-          if (!workSummary) {
-            workSummary = {}
-          }
-          workSummary.body = part.text
-          console.log(`[Telegram Event] Extracted part.text as body: ${part.text.substring(0, 50)}...`)
         }
       }
     },
