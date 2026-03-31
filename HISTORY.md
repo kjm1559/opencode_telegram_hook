@@ -525,6 +525,25 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
 ---
 
+### Problem 17: Empty Session Completion Not Reported
+
+**Symptom:**
+```
+[Telegram] trySend: sending=false, tools=0, files=0
+```
+- 도구 사용이나 파일 변경이 없는 세션 완료 시 메시지가 전송되지 않음
+
+**Root Cause:**
+- `trySendCompletion()`에서 `tools=0 && files=0`일 때 early return
+- 빈 리포트도 세션 완료 알림은 필요함
+
+**Solution:**
+- 빈 리포트 체크 제거 — 항상 전송
+- `buildCompletionMessage`: 도구/파일이 모두 없으면 간단한 완료 메시지만 표시
+- 도구/파일 섹션이 각각 비어있으면 해당 섹션 자체를 생략
+
+---
+
 ## Common Patterns & Lessons Learned (Updated)
 
 ### Pattern 5: Session ID Identification

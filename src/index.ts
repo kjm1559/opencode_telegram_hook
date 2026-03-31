@@ -61,13 +61,19 @@ function summarizeToolInput(tool: string, args: any): string {
 function buildCompletionMessage(r: WorkReport, name: string): string {
   const escapedName = escapeHtml(name)
 
+  if (r.tools.length === 0 && r.files.length === 0) {
+    return `<b>[${escapedName}] 작업 완료</b>\n\n✅ 작업이 완료되었습니다.`
+  }
+
   const toolSection = r.tools.length > 0
     ? `🔧 사용된 도구 (${r.tools.length}개):\n${r.tools.map((t, i) => `  ${i + 1}. <code>${escapeHtml(t.tool)}</code>${t.input ? ` — ${escapeHtml(t.input)}` : ""}`).join("\n")}\n\n`
     : ""
 
-  const fileSection = `📝 변경 파일 (${r.files.length}개):\n${r.files.map((f) => `• ${escapeHtml(f)}`).join("\n")}`
+  const fileSection = r.files.length > 0
+    ? `📝 변경 파일 (${r.files.length}개):\n${r.files.map((f) => `• ${escapeHtml(f)}`).join("\n")}`
+    : ""
 
-  return `<b>[${escapedName}] 작업 완료</b>\n\n${toolSection}${fileSection}\n\n✅ 작업이 완료되었습니다.`
+  return `<b>[${escapedName}] 작업 완료</b>\n\n${toolSection}${fileSection}\n✅ 작업이 완료되었습니다.`
 }
 
 export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
@@ -124,7 +130,7 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   function trySendCompletion() {
     console.log(`[Telegram] trySend: sending=${sending}, tools=${report.tools.length}, files=${report.files.length}`)
-    if (sending || (report.tools.length === 0 && report.files.length === 0)) return
+    if (sending) return
 
     sending = true
     const snapshot = { tools: [...report.tools], files: [...report.files] }
