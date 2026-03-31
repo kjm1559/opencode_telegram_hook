@@ -103,20 +103,15 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           console.log(`[Telegram] session.idle`)
           scheduleSendCompletion()
           break
-        case "session.diff": {
-          const diffSessionID = event.properties?.sessionID
-          if (diffSessionID !== currentSessionID) {
-            console.log(`[Telegram] session.diff: skipped (session mismatch: ${diffSessionID} !== ${currentSessionID})`)
-            break
-          }
-          const diff = event.properties?.diff
-          console.log(`[Telegram] session.diff: files=${diff?.length || 0}`)
-          if (diff?.length) {
-            for (const d of diff) {
+        case "session.updated": {
+          const info = event.properties?.info
+          const diffs = info?.summary?.diffs
+          if (diffs?.length) {
+            for (const d of diffs) {
               const file = d.file
               if (!report.files.includes(file)) report.files.push(file)
             }
-            console.log(`[Telegram] files: ${report.files.join(", ")}`)
+            console.log(`[Telegram] session.updated: files=${report.files.join(", ")}`)
           }
           break
         }
@@ -128,10 +123,11 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
       }
     },
 
-    "tool.execute.before": async (input, _output) => {
+    "tool.execute.before": async (input, output) => {
       if (input.sessionID?.startsWith("ses_")) resetForSession(input.sessionID)
       if (input.tool) {
-        report.tools.push({ tool: input.tool, input: "" })
+        const summary = summarizeToolInput(input.tool, output?.args)
+        report.tools.push({ tool: input.tool, input: summary })
         console.log(`[Telegram] tool.execute.before: ${input.tool} (${report.tools.length} total)`)
       }
     },
@@ -141,6 +137,40 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
       send(MSG_CONNECTED(projectName)).then(ok => console.log(`[Telegram] connected: ${ok}`))
     },
   }
+}
+
+function summarizeToolInput(tool: string, args: any): string {
+  if (!args) return ""
+
+  switch (tool) {
+    case "edit":
+    case "write":
+      return args.file ? args.file : ""
+    case "read":
+      return args.file ? args.file : ""
+    case "bash":
+      return args.command ? truncate(args.command, 80) : ""
+    case "glob":
+      return args.pattern ? args.pattern : ""
+    case "grep":
+      return args.pattern ? args.pattern : ""
+    case "task":
+      return args.description ? truncate(args.description, 80) : ""
+    default: {
+      const hint = args.file ?? args.path ?? args.command ?? args.query ?? args.description
+      if (typeof hint === "string") return truncate(hint, 80)
+      try {
+        const keys = Object.keys(args).slice(0, 3)
+        if (keys.length > 0) return keys.join(", ")
+      } catch { }
+      return ""
+    }
+  }
+}
+
+function truncate(s: string, limit: number): string {
+  if (s.length <= limit) return s
+  return s.slice(0, limit) + "…"
 }
 
 function escapeHtml(text: string): string {
