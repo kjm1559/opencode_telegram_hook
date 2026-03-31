@@ -64,22 +64,33 @@ bun run build
 }
 ```
 
-## Events
+## Events & Hooks
+
+### Events (via `event` handler)
 
 | 이벤트 | 동작 |
 |--------|------|
 | `session.status (busy)` | 상태 초기화 |
 | `session.status (idle)` | 완료 감지 → 메시지 전송 |
 | `session.idle` | 완료 감지 (fallback) |
-| `tool.execute.before` | 툴 사용 기록 |
-| `session.updated` | 변경 파일 수집 |
+| `session.diff` | 변경 파일 수집 |
+| `file.edited` | 개별 파일 변경 추적 (fallback) |
 | `permission.asked` / `question.asked` | 선택 필요 알림 |
+
+### Hooks (별도 등록)
+
+| 훅 | 동작 |
+|----|------|
+| `tool.execute.before` | 툴 사용 기록 |
+| `config` | 연결 확인 알림 |
 
 ## Architecture
 
 - 이벤트 기반 (폴링 없음)
-- 단일 파일 구현 (3.63 KB)
+- 단일 파일 구현 (4.82 KB)
 - 각 인스턴스 독립 동작
+- `tool.execute.before`는 별도 훅으로 등록 (이벤트 아님)
+- `session.diff`는 OpenCore 가 계산한 파일 diff 를 직접 수신
 
 ## Troubleshooting
 
