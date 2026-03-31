@@ -19,6 +19,8 @@ When work is completed, the plugin sends a summary:
 **Summary includes:**
 - File changes from OpenCode's automatic summary generation
 - Falls back to file list when no text summary available
+- Messages are only sent when summary content is available (no empty notifications)
+- Truncated at 4000 chars to comply with Telegram message limit
 
 ### Choice Required Notification (with Summary)
 
@@ -27,9 +29,7 @@ When user choice is needed:
 ```
 [project-name] 선택 필요
 
-제목: 작업 제목
-
-작업 내용 요약
+[작업 요약 내용]
 
 ⚠️ 작업을 계속하기 위해 선택이 필요합니다.
 ```
