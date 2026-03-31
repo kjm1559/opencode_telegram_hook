@@ -115,9 +115,9 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       console.log(`[Telegram Plugin] Initialized for ${projectName}`)
       console.log(`  Chat ID: ${chatId}`)
       
-      await sendMessage(`<b>[${projectName}] 플러그인 시작</b>
+      await sendMessage(`<b>[${projectName}] Telegram 플러그인 연결됨</b>
 
-테스트 메시지입니다.`)
+작업 완료 및 선택 알림을 Telegram 으로 전송합니다.`)
     }
   }
 
