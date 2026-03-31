@@ -33,6 +33,7 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   let sending = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   const IDLE_DEBOUNCE_MS = 8000
+  let seenFiles = new Set<string>()
 
   async function send(text: string) {
     try {
@@ -51,6 +52,7 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     if (currentSessionID === sessionID) return
     currentSessionID = sessionID
     report = { tools: [], files: [] }
+    seenFiles.clear()
     console.log(`[Telegram] new session: ${sessionID}`)
   }
 
@@ -75,6 +77,7 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     if (report.tools.length === 0 && report.files.length === 0) return
     sending = true
     const snapshot = { tools: [...report.tools], files: [...report.files] }
+    for (const f of report.files) seenFiles.add(f)
     report = { tools: [], files: [] }
     const msg = buildCompletionMessage(snapshot, projectName)
     console.log(`[Telegram] sending: ${msg.substring(0, 100)}...`)
@@ -103,15 +106,16 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           console.log(`[Telegram] session.idle`)
           scheduleSendCompletion()
           break
-        case "session.updated": {
-          const info = event.properties?.info
-          const diffs = info?.summary?.diffs
-          if (diffs?.length) {
-            for (const d of diffs) {
+        case "session.diff": {
+          const diffSessionID = event.properties?.sessionID
+          if (diffSessionID !== currentSessionID) break
+          const diff = event.properties?.diff
+          if (diff?.length) {
+            for (const d of diff) {
               const file = d.file
-              if (!report.files.includes(file)) report.files.push(file)
+              if (!seenFiles.has(file) && !report.files.includes(file)) report.files.push(file)
             }
-            console.log(`[Telegram] session.updated: files=${report.files.join(", ")}`)
+            console.log(`[Telegram] session.diff: files=${report.files.join(", ")}`)
           }
           break
         }

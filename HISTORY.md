@@ -472,6 +472,27 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
 ---
 
+### Problem 15: session.updated Does Not Contain Diffs — Changed Files Always 0
+
+**Symptom:**
+```
+📝 변경 파일 (0개):
+```
+- 파일 변경을 수행해도 변경 파일이 0개로 보고됨
+
+**Root Cause:**
+- `session.updated` 이벤트의 `info.summary.diffs`는 **항상 비어 있음**
+- OpenCode는 파일 diff를 `session_diff` 별도 스토리지에 저장하고 `session.diff` 이벤트로만 발행
+- `Session.setSummary()`는 additions/deletions/files 숫자만 업데이트하고 diffs 배열은 포함하지 않음
+
+**Solution:**
+- `session.diff`로 복귀
+- `seenFiles` Set 도입: 이미 보고한 파일을 추적하여 중복 추가 방지
+- 전송 시 `seenFiles`에 기록, `session.diff` 수신 시 `seenFiles`에 없는 파일만 추가
+- 세션 변경 시 `seenFiles` 초기화
+
+---
+
 ## Common Patterns & Lessons Learned (Updated)
 
 ### Pattern 5: Session ID Identification
@@ -484,7 +505,7 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 - **Use timer-based debounce**: Only send after sustained idle period
 - **Preserve state during busy**: Don't reset accumulated data on busy events
 
-### Pattern 7: Cumulative vs Incremental Events
+### Pattern 7: Cumulative Events Need Seen-State Tracking
 - **`session.diff` is cumulative**: Returns entire session diff, not just new changes
-- **Prefer `session.updated`**: `info.summary.diffs` is more reliable for file tracking
-- **Always verify event semantics**: Don't assume events are incremental without testing
+- **Use `seenFiles` Set**: Track already-reported files to prevent duplicates across multiple diff events
+- **Clear on session change**: `seenFiles` resets when session ID changes
