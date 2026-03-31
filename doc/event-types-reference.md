@@ -327,9 +327,75 @@ type EventSessionStarted = {
 
 ---
 
+### session.status
+
+**목적**: 세션 상태 변경 (busy/idle/retry)
+
+**타입**:
+```typescript
+type EventSessionStatus = {
+  type: "session.status"
+  properties: {
+    sessionID: string
+    status: {
+      type: "busy" | "idle" | "retry"
+      attempt?: number    // retry일 때만
+      message?: string    // retry일 때만
+      next?: number       // retry일 때만
+    }
+  }
+}
+```
+
+**참고**: `status.type`이 `"idle"`일 때는 별도로 `session.idle` 이벤트도 함께 발행됩니다.
+
+---
+
+### session.idle
+
+**목적**: 세션이 idle 상태가 되었을 때 (fallback — `session.status (idle)` 사용 권장)
+
+**타입**:
+```typescript
+type EventSessionIdle = {
+  type: "session.idle"
+  properties: {
+    sessionID: string
+  }
+}
+```
+
+---
+
+### session.diff
+
+**목적**: 세션의 파일 변경 diff (OpenCode가 계산)
+
+**타입**:
+```typescript
+type EventSessionDiff = {
+  type: "session.diff"
+  properties: {
+    sessionID: string
+    diff: Array<{
+      file: string        // 파일 경로
+      before?: string     // 변경 전 내용
+      after?: string      // 변경 후 내용
+      additions?: number
+      deletions?: number
+      status?: "added" | "deleted" | "modified"
+    }>
+  }
+}
+```
+
+---
+
 ## 파일 이벤트
 
 ### file.edited
+
+> ⚠️ **주의**: 현재 OpenCode 버전에서 이 이벤트는 발행되지 않습니다. 파일 변경 추적에는 `session.diff`를 사용하세요.
 
 **목적**: 파일 편집
 
@@ -359,17 +425,31 @@ type EventFileEdited = {
 
 ### tool.execute.before
 
+> ⚠️ **참고**: 이 훅은 Bus 이벤트가 아닌 Plugin Hook입니다. `event` 핸들러가 아닌 별도 훅으로 등록해야 합니다.
+
 **목적**: 툴 실행 전
 
-**타입**:
+**타입** (Hook input):
 ```typescript
-type EventToolExecuteBefore = {
-  type: "tool.execute.before"
-  properties: {
-    callID: string
-    tool: string
-    description: string
-    input: Record<string, any>
+type ToolExecuteBeforeInput = {
+  tool: string          // 툴 이름 (예: "edit", "bash", "read")
+  sessionID: string     // 세션 ID (항상 "ses_..." 형식)
+  callID: string        // 툴 호출 ID
+}
+```
+
+**타입** (Hook output — mutable):
+```typescript
+type ToolExecuteBeforeOutput = {
+  args: any             // 툴에 전달될 인자 (수정 가능)
+}
+```
+
+**사용법**:
+```typescript
+return {
+  "tool.execute.before": async (input, output) => {
+    console.log(`툴 실행: ${input.tool} in session ${input.sessionID}`)
   }
 }
 ```
@@ -378,19 +458,26 @@ type EventToolExecuteBefore = {
 
 ### tool.execute.after
 
+> ⚠️ **참고**: 이 훅도 Plugin Hook입니다.
+
 **목적**: 툴 실행 후
 
-**타입**:
+**타입** (Hook input):
 ```typescript
-type EventToolExecuteAfter = {
-  type: "tool.execute.after"
-  properties: {
-    callID: string
-    tool: string
-    description: string
-    output: string      // 실행 결과
-    input: Record<string, any>
-  }
+type ToolExecuteAfterInput = {
+  tool: string
+  sessionID: string
+  callID: string
+  args: any             // 실행된 인자
+}
+```
+
+**타입** (Hook output — mutable):
+```typescript
+type ToolExecuteAfterOutput = {
+  title: string
+  output: string
+  metadata: any
 }
 ```
 
@@ -573,6 +660,13 @@ grep "export type Event" /path/to/types.gen.ts
 ---
 
 ## 변경 로그
+
+### v0.2.0 (2026-03-31)
+
+- `session.status`, `session.idle`, `session.diff` 이벤트 문서 추가
+- `file.edited`에 현재 OpenCode에서 발행되지 않음 경고 추가
+- `tool.execute.before/after`를 Plugin Hook으로 정확히 표기
+- `tool.execute.before` input에 `sessionID` 필드 추가
 
 ### v0.1.0 (2026-03-27)
 

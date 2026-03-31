@@ -317,3 +317,102 @@ Available projects:
 - Regular messages - Broadcast to all projects
 
 **Last Updated:** 2025-03-28
+
+---
+
+## 2026-03-31: Completion Message Architecture Redesign
+
+### Problem 8: Completion Messages Sent Prematurely
+
+**Symptom:**
+- 작업 완료 메시지가 각 도구 실행마다 개별 전송됨
+- 전체 작업이 아닌 일부만 보고됨
+
+**Root Cause:**
+- `session.diff`와 `file.edited` 이벤트 핸들러에서 `trySendCompletion()`을 즉시 호출
+- `file.edited`는 현재 OpenCode에서 존재하지 않는 이벤트
+- `session.diff`는 작업 중간에도 발생하므로 조기 전송 유발
+
+**Solution:**
+- `session.diff`에서 수집만 하고 전송은 제거
+- `file.edited` 핸들러 완전 제거
+- 전송은 오직 `session.status (idle)`에서만 발생
+
+---
+
+### Problem 9: Debounce Needed for True Completion Detection
+
+**Symptom:**
+- 도구 실행 사이사이에 `idle → busy → idle`이 빈번히 발생
+- 각 idle마다 즉시 전송하면 작업이 분할되어 보고됨
+
+**Root Cause:**
+- OpenCode는 각 도구 실행 전후로 busy/idle을 반복함
+- idle을 완료로 간주하면 도구 하나당 한 번씩 전송됨
+
+**Solution:**
+- **8초 debounce** 도입
+- `idle` → 8초 타이머 예약 (전송 아님)
+- 8초 내 `busy` 오면 타이머 취소 + 리포트 누적 유지
+- 8초 동안 idle 유지 시에만 최종 전송
+
+---
+
+### Problem 10: Report Reset on Every Busy (Data Loss)
+
+**Symptom:**
+```
+[Telegram] tool.execute.before: edit (1 total)
+[Telegram] session.status: busy
+[Telegram] tool.execute.before: read (1 total)  // edit 기록 손실
+```
+- 변경 파일만 보고되고 사용된 도구 목록이 비어있음
+
+**Root Cause:**
+- `busy` 이벤트에서 `report = { tools: [], files: [] }`로 초기화
+- 도구 실행 사이사이에 busy가 발생하면 이전 도구 기록이 모두 손실
+
+**Solution:**
+- `busy`에서 타이머만 취소, 리포트는 초기화하지 않음
+- 리포트 초기화는 새 세션 시작 또는 전송 완료 후에만 발생
+
+---
+
+### Problem 11: Message ID Confused with Session ID
+
+**Symptom:**
+```
+[Telegram] new session: msg_d4274566c001VsG491zNwG8oCa
+[Telegram] new session: ses_2bd948ed1ffeVYCjrvnm0ARBwD
+```
+- 매 이벤트마다 `new session:` 로그, 리포트 계속 초기화됨
+
+**Root Cause:**
+- `event.properties?.info?.id`가 세션 ID(`ses_xxx`)와 메시지 ID(`msg_xxx`)를 모두 포함
+- `msg_xxx`를 세션으로 오인식하여 `resetForSession()`이 매번 호출됨
+
+**Solution:**
+- `ses_` 접두사로 시작하는 ID만 실제 세션으로 간주
+- `tool.execute.before` 훅의 `input.sessionID`는 항상 `ses_` 형식이므로 추가 추적으로 활용
+
+```typescript
+// Before (bug)
+if (sessionID) resetForSession(sessionID)
+
+// After (fixed)
+if (rawID?.startsWith("ses_")) resetForSession(rawID)
+```
+
+---
+
+## Common Patterns & Lessons Learned (Updated)
+
+### Pattern 5: Session ID Identification
+- **Always check prefix**: `ses_` = session, `msg_` = message, `part_` = part
+- **Never trust `info.id` blindly**: It can be any entity's ID depending on event type
+- **Hook `sessionID` is reliable**: `tool.execute.before` always provides `ses_` format
+
+### Pattern 6: Debounce for Completion
+- **Idle ≠ Complete**: Tools fire busy/idle cycles between each execution
+- **Use timer-based debounce**: Only send after sustained idle period
+- **Preserve state during busy**: Don't reset accumulated data on busy events

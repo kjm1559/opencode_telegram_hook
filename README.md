@@ -103,6 +103,20 @@ bun run build
 
 즉, 도구들이 연달아 실행되는 동안에는 타이머가 매번 리셋되고 리포트는 계속 누적되며, 진짜 완료(8초 이상 idle)될 때만 작업 내역을 한 번에 보냅니다.
 
+### 세션 ID 필터링
+
+OpenCode 이벤트의 `event.properties.info.id`는 세션 ID(`ses_xxx`) 뿐만 아니라 메시지 ID(`msg_xxx`)도 포함합니다. 메시지 ID를 세션으로 오인식하면 리포트가 매 이벤트마다 초기화되는 문제가 발생하므로, `ses_` 접두사로 시작하는 ID만 실제 세션으로 간주합니다.
+
+```typescript
+// ✅ Correct: ses_로 시작하는 ID만 세션으로 인식
+if (rawID?.startsWith("ses_")) resetForSession(rawID)
+
+// ❌ Wrong: msg_xxx도 세션으로 간주하여 리포트 초기화
+if (sessionID) resetForSession(sessionID)
+```
+
+`tool.execute.before` 훅의 `input.sessionID`는 항상 `ses_` 형식이므로 추가 세션 추적에 활용합니다.
+
 ## Troubleshooting
 
 **알림이 안 오나요?**
