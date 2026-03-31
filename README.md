@@ -123,11 +123,32 @@ if (sessionID) resetForSession(sessionID)
 
 | 도구 | 표시 내용 |
 |------|----------|
-| `edit` / `write` / `read` | 파일 경로 |
+| `edit` | 파일명 + 교체할 텍스트 미리보기 (첫 줄 40자) |
+| `read` | 파일명 + 라인 오프셋/제한 (예: `README.md L10 +50`) |
+| `write` | 파일 경로 |
 | `bash` | 명령어 (80자 제한) |
 | `glob` / `grep` | 검색 패턴 |
 | `task` | 서브태스크 설명 |
 | 기타 | 주요 인자 키 또는 첫 3개 필드명 |
+
+### 작업 완료 메시지 예시
+
+```
+[project-name] 작업 완료
+
+🔧 사용된 도구 (5개):
+  1. read — src/index.ts L1 +200
+  2. edit — src/index.ts — "export const TelegramPlugin"
+  3. bash — bun run build
+  4. edit — README.md — "## Events & Hooks"
+  5. bash — git add . && git commit -m "..."
+
+📝 변경 파일 (2개):
+• src/index.ts
+• README.md
+
+✅ 작업이 완료되었습니다.
+```
 
 ### 파일 변경 추적
 

@@ -143,11 +143,28 @@ function summarizeToolInput(tool: string, args: any): string {
   if (!args) return ""
 
   switch (tool) {
-    case "edit":
-    case "write":
-      return args.file ? args.file : ""
-    case "read":
-      return args.file ? args.file : ""
+    case "edit": {
+      const file = args.filePath ?? args.file ?? ""
+      if (!file) return ""
+      const oldStr = args.oldString
+      if (typeof oldStr === "string" && oldStr.length > 0) {
+        const preview = truncate(oldStr.split("\n")[0], 40)
+        return `${file} — "${preview}"`
+      }
+      return file
+    }
+    case "write": {
+      const file = args.filePath ?? args.file ?? ""
+      return file
+    }
+    case "read": {
+      const file = args.filePath ?? args.file ?? ""
+      if (!file) return ""
+      const parts = [file]
+      if (args.offset) parts.push(`L${args.offset}`)
+      if (args.limit) parts.push(`+${args.limit}`)
+      return parts.join(" ")
+    }
     case "bash":
       return args.command ? truncate(args.command, 80) : ""
     case "glob":

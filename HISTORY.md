@@ -452,6 +452,26 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
 ---
 
+### Problem 14: Tool Input Shows Only Parameter Keys, Not Actual Values
+
+**Symptom:**
+```
+  1. edit — filePath
+  2. read — filePath
+```
+- 도구 입력값에 실제 파일명 대신 파라미터 키 이름만 표시됨
+
+**Root Cause:**
+- read/edit 도구의 실제 파라미터는 `filePath` 필드명인데, 코드에서 `args.file`을 조회하여 빈 문자열 반환
+- fallback 로직이 파라미터 키 목록을 반환하면서 `filePath`라는 문자열만 표시됨
+
+**Solution:**
+- `args.filePath`를 우선 조회하도록 수정
+- **edit**: 파일명 + 교체할 텍스트의 첫 줄 미리보기 (40자)
+- **read**: 파일명 + 라인 오프셋/제한 (예: `README.md L10 +50`)
+
+---
+
 ## Common Patterns & Lessons Learned (Updated)
 
 ### Pattern 5: Session ID Identification
