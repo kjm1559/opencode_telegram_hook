@@ -70,11 +70,10 @@ bun run build
 
 | 이벤트 | 동작 |
 |--------|------|
-| `session.status (busy)` | 상태 초기화 |
-| `session.status (idle)` | 완료 감지 → 메시지 전송 |
-| `session.idle` | 완료 감지 (fallback) |
+| `session.status (busy)` | 상태 초기화 + 대기 중인 타이머 취소 |
+| `session.status (idle)` | 완료 타이머 예약 (8초 debounce) |
+| `session.idle` | 완료 타이머 예약 (fallback) |
 | `session.diff` | 변경 파일 수집 |
-| `file.edited` | 개별 파일 변경 추적 (fallback) |
 | `permission.asked` / `question.asked` | 선택 필요 알림 |
 
 ### Hooks (별도 등록)
@@ -87,10 +86,22 @@ bun run build
 ## Architecture
 
 - 이벤트 기반 (폴링 없음)
-- 단일 파일 구현 (4.82 KB)
+- 단일 파일 구현
 - 각 인스턴스 독립 동작
 - `tool.execute.before`는 별도 훅으로 등록 (이벤트 아님)
-- `session.diff`는 OpenCore 가 계산한 파일 diff 를 직접 수신
+- `session.diff`는 OpenCode 가 계산한 파일 diff 를 직접 수신
+
+### 작업 완료 감지 (Debounce)
+
+도구 실행 사이사이에 `idle` 이벤트가 빈번히 발생하므로, 즉시 전송하지 않고 **8초 debounce**를 적용합니다:
+
+1. **busy** → 타이머 취소 + 리포트 초기화 (새 작업 시작)
+2. **idle** → 8초 타이머 예약 (아직 보내지 않음)
+3. idle 중에도 파일/툴 수집 계속됨
+4. 8초 안에 다시 busy 오면 → 타이머 취소, 리포트 초기화, 새로운 사이클 시작
+5. 8초 동안 idle 유지 → 최종 모아서 한 번에 전송
+
+즉, 도구들이 연달아 실행되는 동안에는 타이머가 매번 리셋되고, 진짜 완료(8초 이상 idle)될 때만 작업 내역을 한 번에 보냅니다.
 
 ## Troubleshooting
 

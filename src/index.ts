@@ -31,6 +31,8 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   let report: WorkReport = { tools: [], files: [] }
   let currentSessionID: string | null = null
   let sending = false
+  let idleTimer: ReturnType<typeof setTimeout> | null = null
+  const IDLE_DEBOUNCE_MS = 8000
 
   async function send(text: string) {
     try {
@@ -52,13 +54,29 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     console.log(`[Telegram] new session: ${sessionID}`)
   }
 
+  function scheduleSendCompletion() {
+    if (idleTimer) clearTimeout(idleTimer)
+    idleTimer = setTimeout(() => {
+      idleTimer = null
+      trySendCompletion()
+    }, IDLE_DEBOUNCE_MS)
+  }
+
+  function cancelScheduledSend() {
+    if (idleTimer) {
+      clearTimeout(idleTimer)
+      idleTimer = null
+    }
+  }
+
   function trySendCompletion() {
     console.log(`[Telegram] trySend: sending=${sending}, tools=${report.tools.length}, files=${report.files.length}`)
     if (sending) return
     if (report.tools.length === 0 && report.files.length === 0) return
     sending = true
-    const msg = buildCompletionMessage(report, projectName)
+    const snapshot = { tools: [...report.tools], files: [...report.files] }
     report = { tools: [], files: [] }
+    const msg = buildCompletionMessage(snapshot, projectName)
     console.log(`[Telegram] sending: ${msg.substring(0, 100)}...`)
     send(msg).then(ok => console.log(`[Telegram] sent: ${ok}`)).catch(e => console.error(`[Telegram] error:`, e)).finally(() => { sending = false })
   }
@@ -74,12 +92,17 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
         case "session.status": {
           const type = event.properties?.status?.type
           console.log(`[Telegram] session.status: ${type}`)
-          if (type === "idle") trySendCompletion()
+          if (type === "busy") {
+            cancelScheduledSend()
+            report = { tools: [], files: [] }
+          } else if (type === "idle") {
+            scheduleSendCompletion()
+          }
           break
         }
         case "session.idle":
           console.log(`[Telegram] session.idle`)
-          trySendCompletion()
+          scheduleSendCompletion()
           break
         case "session.diff": {
           const diff = event.properties?.diff
@@ -90,7 +113,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
               if (!report.files.includes(file)) report.files.push(file)
             }
             console.log(`[Telegram] files: ${report.files.join(", ")}`)
-            trySendCompletion()
           }
           break
         }
@@ -99,15 +121,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           console.log(`[Telegram] ${event.type}`)
           send(MSG_CHOICE_FALLBACK(projectName))
           break
-        case "file.edited": {
-          const file = event.properties?.file
-          if (file && !report.files.includes(file)) {
-            report.files.push(file)
-            console.log(`[Telegram] file.edited: ${file} (${report.files.length} total)`)
-            trySendCompletion()
-          }
-          break
-        }
       }
     },
 
