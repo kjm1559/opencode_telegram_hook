@@ -36,10 +36,16 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     }
   }
 
+  let sending = false
+
   async function sendCompletion() {
-    await send(workSummary ? formatCompletionMessage(workSummary, projectName) : MSG_COMPLETION_FALLBACK(projectName))
+    if (sending) return
+    sending = true
+    const currentSummary = workSummary
     workSummary = null
     pendingCompletion = false
+    await send(currentSummary ? formatCompletionMessage(currentSummary, projectName) : MSG_COMPLETION_FALLBACK(projectName))
+    sending = false
   }
 
   function setIdle() {

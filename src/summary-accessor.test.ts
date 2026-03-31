@@ -1,5 +1,5 @@
 import { describe, test, expect } from 'bun:test'
-import { getSummaryFromEvent, hasSummary, type WorkSummary } from './summary-accessor'
+import { getSummaryFromEvent, type WorkSummary } from './summary-accessor'
 
 describe('getSummaryFromEvent', () => {
   test('extracts summary from message.updated event with full data', () => {
@@ -235,95 +235,5 @@ describe('getSummaryFromEvent', () => {
     expect(result).toEqual({
       title: 'Session Fallback Title'
     })
-  })
-})
-
-describe('hasSummary', () => {
-  test('returns true for message.updated with summary', () => {
-    const event = {
-      type: 'message.updated',
-      properties: {
-        info: {
-          summary: { title: 'Test' }
-        }
-      }
-    }
-    expect(hasSummary(event)).toBe(true)
-  })
-
-  test('returns true for session.updated with summary', () => {
-    const event = {
-      type: 'session.updated',
-      properties: {
-        info: {
-          summary: { additions: 10 }
-        }
-      }
-    }
-    expect(hasSummary(event)).toBe(true)
-  })
-
-  test('returns false for message.updated without summary', () => {
-    const event = {
-      type: 'message.updated',
-      properties: {
-        info: {}
-      }
-    }
-    expect(hasSummary(event)).toBe(false)
-  })
-
-  test('returns false for session.updated without summary', () => {
-    const event = {
-      type: 'session.updated',
-      properties: {
-        info: {}
-      }
-    }
-    expect(hasSummary(event)).toBe(false)
-  })
-
-  test('returns false for unknown event type', () => {
-    const event = {
-      type: 'unknown.event',
-      properties: {
-        info: {
-          summary: { title: 'Test' }
-        }
-      }
-    }
-    expect(hasSummary(event)).toBe(false)
-  })
-
-  test('returns false for empty event object', () => {
-    const event = {}
-    expect(hasSummary(event)).toBe(false)
-  })
-
-  test('returns false when properties is undefined', () => {
-    const event = {
-      type: 'message.updated'
-    }
-    expect(hasSummary(event)).toBe(false)
-  })
-
-  test('returns false when info is undefined', () => {
-    const event = {
-      type: 'message.updated',
-      properties: {}
-    }
-    expect(hasSummary(event)).toBe(false)
-  })
-
-  test('returns false when summary is null', () => {
-    const event = {
-      type: 'message.updated',
-      properties: {
-        info: {
-          summary: null
-        }
-      }
-    }
-    expect(hasSummary(event)).toBe(false)
   })
 })

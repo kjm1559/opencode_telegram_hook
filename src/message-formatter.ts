@@ -5,11 +5,8 @@
 
 import { WorkSummary } from './summary-accessor'
 
-/**
- * Escapes HTML special characters for safe HTML rendering.
- * @param text - Text to escape
- * @returns Escaped text safe for HTML
- */
+const TELEGRAM_MAX_LENGTH = 4000
+
 export function escapeHtml(text: string): string {
   if (!text) return ''
   return text
@@ -18,15 +15,14 @@ export function escapeHtml(text: string): string {
     .replace(/>/g, '&gt;')
 }
 
-/**
- * Formats a work completion summary into a Telegram HTML message.
- * @param summary - Work summary to format
- * @param projectName - Name of the project
- * @returns HTML-formatted message for Telegram
- */
+function truncate(text: string, limit: number): string {
+  if (text.length <= limit) return text
+  return text.slice(0, limit) + '\n\n...(잘림)'
+}
+
 export function formatCompletionMessage(summary: WorkSummary, projectName: string): string {
   const escapedProjectName = escapeHtml(projectName)
-  const escapedBody = escapeHtml(summary.body || '')
+  const escapedBody = truncate(escapeHtml(summary.body || ''), TELEGRAM_MAX_LENGTH - 80)
 
   const bodySection = escapedBody ? `\n${escapedBody}\n` : ''
 
@@ -36,15 +32,9 @@ ${bodySection}
 ✅ 작업이 완료되었습니다.`
 }
 
-/**
- * Formats a choice required summary into a Telegram HTML message.
- * @param summary - Work summary to format
- * @param projectName - Name of the project
- * @returns HTML-formatted message for Telegram
- */
 export function formatChoiceMessage(summary: WorkSummary, projectName: string): string {
   const escapedProjectName = escapeHtml(projectName)
-  const escapedBody = escapeHtml(summary.body || '')
+  const escapedBody = truncate(escapeHtml(summary.body || ''), TELEGRAM_MAX_LENGTH - 80)
 
   const bodySection = escapedBody ? `\n${escapedBody}\n` : ''
 
