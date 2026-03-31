@@ -27,8 +27,9 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   const projectName = directory.split("/").pop() || "unknown"
   console.log(`[Telegram Plugin] Initialized for ${projectName}`)
+
   let report: WorkReport = { tools: [], files: [] }
-  let pendingCompletion = false
+  let currentSessionID: string | null = null
   let sending = false
 
   async function send(text: string) {
@@ -44,42 +45,50 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     }
   }
 
-  function setIdle() {
-    pendingCompletion = true
-    console.log(`[Telegram] idle set, files=${report.files.length}, tools=${report.tools.length}`)
-    trySendCompletion()
+  function resetForSession(sessionID: string) {
+    if (currentSessionID === sessionID) return
+    currentSessionID = sessionID
+    report = { tools: [], files: [] }
+    console.log(`[Telegram] new session: ${sessionID}`)
   }
 
   function trySendCompletion() {
-    console.log(`[Telegram] trySend: sending=${sending}, pending=${pendingCompletion}, files=${report.files.length}`)
-    if (sending || !pendingCompletion || report.files.length === 0) return
+    console.log(`[Telegram] trySend: sending=${sending}, tools=${report.tools.length}, files=${report.files.length}`)
+    if (sending) return
+    if (report.tools.length === 0 && report.files.length === 0) return
     sending = true
     const msg = buildCompletionMessage(report, projectName)
     report = { tools: [], files: [] }
-    pendingCompletion = false
     console.log(`[Telegram] sending: ${msg.substring(0, 100)}...`)
     send(msg).then(ok => console.log(`[Telegram] sent: ${ok}`)).catch(e => console.error(`[Telegram] error:`, e)).finally(() => { sending = false })
   }
 
   return {
     event: async ({ event }) => {
+      const sessionID = event.properties?.info?.id
+        ?? event.properties?.sessionID
+        ?? event.properties?.status?.sessionID
+      if (sessionID) resetForSession(sessionID)
+
       switch (event.type) {
         case "session.status": {
           const type = event.properties?.status?.type
           console.log(`[Telegram] session.status: ${type}`)
-          if (type === "idle") setIdle()
-          else if (type === "busy") { pendingCompletion = false; report = { tools: [], files: [] } }
+          if (type === "idle") trySendCompletion()
           break
         }
         case "session.idle":
           console.log(`[Telegram] session.idle`)
-          setIdle()
+          trySendCompletion()
           break
         case "session.diff": {
           const diff = event.properties?.diff
           console.log(`[Telegram] session.diff: files=${diff?.length || 0}`)
           if (diff?.length) {
-            report.files = diff.map((d: any) => d.file)
+            for (const d of diff) {
+              const file = d.file
+              if (!report.files.includes(file)) report.files.push(file)
+            }
             console.log(`[Telegram] files: ${report.files.join(", ")}`)
             trySendCompletion()
           }
