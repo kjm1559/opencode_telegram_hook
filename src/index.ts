@@ -51,21 +51,18 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       if (event.type === "session.status") {
         const status = event.properties?.status
         
-        if (status?.type === "idle" && workSummary) {
+        if (status?.type === "idle") {
           // 작업 완료 - 메시지 전송
           try {
-            const message = formatCompletionMessage(workSummary, projectName)
+            const message = workSummary
+              ? formatCompletionMessage(workSummary, projectName)
+              : `<b>[${projectName}] 작업 완료</b>
+
+✅ 작업이 완료되었습니다.`
             await sendMessage(message)
             console.log(`[Telegram Event] Session completed (idle), sent completion message`)
           } catch (error) {
             console.error(`[Telegram Event] Error sending completion message:`, error)
-            const fallbackMessage = `<b>[${projectName}] 작업 상태</b>
-
-작업이 완료되었습니다.
-(요약 정보를 가져올 수 없습니다)
-
-✅ 작업 처리되었습니다.`
-            await sendMessage(fallbackMessage)
           }
           workSummary = null
         } else if (status?.type === "busy") {
@@ -77,16 +74,9 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       
       if (event.type === "permission.asked" || event.type === "question.asked") {
         try {
-          const summary = getSummaryFromEvent(event)
-          if (summary && workSummary) {
-            workSummary = summary
-          }
           const message = workSummary
             ? formatChoiceMessage(workSummary, projectName)
             : `<b>[${projectName}] 선택 필요</b>
-
-작업이 진행 중입니다.
-(요약 정보를 가져올 수 없습니다)
 
 ⚠️ 작업을 계속하기 위해 선택이 필요합니다.`
           await sendMessage(message)
@@ -97,28 +87,15 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         return
       }
       
-      if (event.type === "session.updated") {
+      if (event.type === "session.updated" || event.type === "message.updated") {
         try {
           const summary = getSummaryFromEvent(event)
-          if (summary) {
+          if (summary && summary.body) {
             workSummary = summary
-            console.log(`[Telegram Event] Session updated, extracted summary: ${summary.title || 'no title'}`)
+            console.log(`[Telegram Event] Extracted summary body: ${summary.body.substring(0, 50)}...`)
           }
         } catch (error) {
-          console.error(`[Telegram Event] Error extracting summary from session.updated:`, error)
-        }
-        return
-      }
-      
-      if (event.type === "message.updated") {
-        try {
-          const summary = getSummaryFromEvent(event)
-          if (summary) {
-            workSummary = summary
-            console.log(`[Telegram Event] Message updated, extracted summary: ${summary.title || 'no title'}`)
-          }
-        } catch (error) {
-          console.error(`[Telegram Event] Error extracting summary from message.updated:`, error)
+          console.error(`[Telegram Event] Error extracting summary:`, error)
         }
       }
     },

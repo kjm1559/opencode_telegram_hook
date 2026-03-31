@@ -26,24 +26,13 @@ export function escapeHtml(text: string): string {
  */
 export function formatCompletionMessage(summary: WorkSummary, projectName: string): string {
   const escapedProjectName = escapeHtml(projectName)
-  const escapedTitle = escapeHtml(summary.title || '')
   const escapedBody = escapeHtml(summary.body || '')
 
-  let fileChanges = ''
-  if (summary.diffs && summary.diffs.length > 0) {
-    const filesList = summary.diffs
-      .map((d) => `• <code>${escapeHtml(d.file)}</code>`)
-      .join('\n')
-    fileChanges = `\n📝 변경 사항:\n${filesList}`
-  }
-
-  const titleSection = escapedTitle ? `제목: ${escapedTitle}\n` : ''
   const bodySection = escapedBody ? `\n${escapedBody}\n` : ''
 
   return `<b>[${escapedProjectName}] 작업 완료</b>
 
-${titleSection}${bodySection}${fileChanges}
-
+${bodySection}
 ✅ 작업이 완료되었습니다.`
 }
 
@@ -55,15 +44,12 @@ ${titleSection}${bodySection}${fileChanges}
  */
 export function formatChoiceMessage(summary: WorkSummary, projectName: string): string {
   const escapedProjectName = escapeHtml(projectName)
-  const escapedTitle = escapeHtml(summary.title || '')
   const escapedBody = escapeHtml(summary.body || '')
 
-  const titleSection = escapedTitle ? `제목: ${escapedTitle}\n` : ''
   const bodySection = escapedBody ? `\n${escapedBody}\n` : ''
 
   return `<b>[${escapedProjectName}] 선택 필요</b>
 
-${titleSection}${bodySection}
-
+${bodySection}
 ⚠️ 작업을 계속하기 위해 선택이 필요합니다.`
 }
