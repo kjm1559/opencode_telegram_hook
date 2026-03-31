@@ -47,19 +47,25 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   }
 
   function extractPartText(event: any) {
-    const text = event.properties?.part?.text
-    if (!text) return
+    const part = event.properties?.part
+    const text = part?.text
+    const role = event.properties?.info?.role
+    console.log(`[DEBUG] message.part.updated: role=${role}, hasText=${!!text}, textPreview=${text ? text.substring(0, 50) : 'none'}`)
+    if (!text || role !== "assistant") return
     if (!workSummary) workSummary = {}
     workSummary.body = text
+    console.log(`[DEBUG] workSummary.body set from assistant, pendingCompletion=${pendingCompletion}`)
     if (pendingCompletion) trySendCompletion()
   }
 
   function trySendCompletion() {
+    console.log(`[DEBUG] trySendCompletion: sending=${sending}, hasBody=${!!workSummary?.body}`)
     if (sending || !workSummary?.body) return
     sending = true
     const currentSummary = workSummary
     workSummary = null
     pendingCompletion = false
+    console.log(`[DEBUG] Sending completion message`)
     send(formatCompletionMessage(currentSummary, projectName)).finally(() => { sending = false })
   }
 
