@@ -73,14 +73,14 @@ bun run build
 | `session.status (busy)` | 대기 중인 타이머 취소 (리포트는 누적 유지) |
 | `session.status (idle)` | 완료 타이머 예약 (8초 debounce) |
 | `session.idle` | 완료 타이머 예약 (fallback) |
-| `session.diff` | 변경 파일 수집 (중복 방지: `seenFiles` 추적) |
 | `permission.asked` / `question.asked` | 선택 필요 알림 |
 
 ### Hooks (별도 등록)
 
 | 훅 | 동작 |
 |----|------|
-| `tool.execute.before` | 툴 사용 기록 |
+| `tool.execute.before` | 툴 사용 기록 + 입력값 요약 |
+| `tool.execute.after` | 실제 변경 파일 추적 (`metadata.filediff`) |
 | `config` | 연결 확인 알림 |
 
 ## Architecture
@@ -89,7 +89,7 @@ bun run build
 - 단일 파일 구현
 - 각 인스턴스 독립 동작
 - `tool.execute.before`는 별도 훅으로 등록 (이벤트 아님)
-- `session.diff`는 OpenCode 가 계산한 파일 diff 를 직접 수신 (`session_diff` 스토리지)
+- `tool.execute.after` 훅의 `metadata.filediff`로 실제 변경 파일만 추적
 
 ### 작업 완료 감지 (Debounce)
 
@@ -152,13 +152,11 @@ if (sessionID) resetForSession(sessionID)
 
 ### 파일 변경 추적
 
-OpenCode는 파일 diff를 `session_diff` 별도 스토리지에 저장하고 `session.diff` 이벤트로만 발행합니다. `session.updated`의 `info.summary.diffs`는 비어 있습니다.
+`session.diff`와 `session.updated` 모두 신뢰할 수 없는 파일 변경 소스입니다:
+- `session.diff`: 세션 전체 누적 diff (실제 변경되지 않은 파일 포함)
+- `session.updated.info.summary.diffs`: 항상 비어 있음
 
-`session.diff`는 세션 전체의 누적 diff를 반환하므로, 이미 보고한 파일을 `seenFiles` Set으로 추적하여 중복 추가를 방지합니다:
-
-- 전송 시: 보고된 파일들을 `seenFiles`에 기록
-- `session.diff` 수신 시: `seenFiles`에 없는 파일만 리포트에 추가
-- 세션 변경 시: `seenFiles` 초기화
+대신 `tool.execute.after` 훅의 `output.metadata.filediff`를 사용합니다. edit/write 도구가 파일을 변경할 때 정확한 diff 메타데이터를 포함하므로, 실제로 변경된 파일만 추적됩니다.
 
 ## Troubleshooting
 

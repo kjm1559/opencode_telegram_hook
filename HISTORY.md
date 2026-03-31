@@ -493,6 +493,23 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
 ---
 
+### Problem 16: session.diff Includes Unchanged Files
+
+**Symptom:**
+- 실제로 작업하지 않은 파일이 변경 파일 목록에 포함됨
+- 세션 전체의 누적 diff가 반환되므로 이전 작업 파일도 포함
+
+**Root Cause:**
+- `session.diff`는 세션 시작부터 현재까지의 **누적 diff**를 반환
+- 도구 실행과 무관하게 세션에 속한 모든 파일 변경 이력이 포함됨
+
+**Solution:**
+- `session.diff` 완전 제거
+- `tool.execute.after` 훅 추가: `output.metadata.filediff`에서 실제 변경 파일 추출
+- edit/write 도구가 파일을 변경할 때 정확한 `filediff` 메타데이터를 포함하므로 신뢰할 수 있는 소스
+
+---
+
 ## Common Patterns & Lessons Learned (Updated)
 
 ### Pattern 5: Session ID Identification
@@ -505,7 +522,8 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 - **Use timer-based debounce**: Only send after sustained idle period
 - **Preserve state during busy**: Don't reset accumulated data on busy events
 
-### Pattern 7: Cumulative Events Need Seen-State Tracking
-- **`session.diff` is cumulative**: Returns entire session diff, not just new changes
-- **Use `seenFiles` Set**: Track already-reported files to prevent duplicates across multiple diff events
-- **Clear on session change**: `seenFiles` resets when session ID changes
+### Pattern 7: File Change Tracking via Tool Hooks
+- **`session.diff` is unreliable**: Returns cumulative session diff, includes unchanged files
+- **`session.updated.summary.diffs` is always empty**: OpenCode stores diffs separately
+- **Use `tool.execute.after`**: `output.metadata.filediff` provides accurate per-tool file changes
+- **Trust tool metadata over session events**: Tools report their own changes reliably

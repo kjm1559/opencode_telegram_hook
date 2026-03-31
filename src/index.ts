@@ -33,7 +33,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   let sending = false
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   const IDLE_DEBOUNCE_MS = 8000
-  let seenFiles = new Set<string>()
 
   async function send(text: string) {
     try {
@@ -52,7 +51,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     if (currentSessionID === sessionID) return
     currentSessionID = sessionID
     report = { tools: [], files: [] }
-    seenFiles.clear()
     console.log(`[Telegram] new session: ${sessionID}`)
   }
 
@@ -77,7 +75,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     if (report.tools.length === 0 && report.files.length === 0) return
     sending = true
     const snapshot = { tools: [...report.tools], files: [...report.files] }
-    for (const f of report.files) seenFiles.add(f)
     report = { tools: [], files: [] }
     const msg = buildCompletionMessage(snapshot, projectName)
     console.log(`[Telegram] sending: ${msg.substring(0, 100)}...`)
@@ -106,19 +103,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           console.log(`[Telegram] session.idle`)
           scheduleSendCompletion()
           break
-        case "session.diff": {
-          const diffSessionID = event.properties?.sessionID
-          if (diffSessionID !== currentSessionID) break
-          const diff = event.properties?.diff
-          if (diff?.length) {
-            for (const d of diff) {
-              const file = d.file
-              if (!seenFiles.has(file) && !report.files.includes(file)) report.files.push(file)
-            }
-            console.log(`[Telegram] session.diff: files=${report.files.join(", ")}`)
-          }
-          break
-        }
         case "permission.asked":
         case "question.asked":
           console.log(`[Telegram] ${event.type}`)
@@ -133,6 +117,17 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
         const summary = summarizeToolInput(input.tool, output?.args)
         report.tools.push({ tool: input.tool, input: summary })
         console.log(`[Telegram] tool.execute.before: ${input.tool} (${report.tools.length} total)`)
+      }
+    },
+
+    "tool.execute.after": async (input, output) => {
+      const filediff = output?.metadata?.filediff
+      if (filediff?.file) {
+        const file = filediff.file
+        if (!report.files.includes(file)) {
+          report.files.push(file)
+          console.log(`[Telegram] tool.execute.after: ${input.tool} changed ${file}`)
+        }
       }
     },
 
