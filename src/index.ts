@@ -75,31 +75,37 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           console.log(`[Telegram] session.idle`)
           setIdle()
           break
-        case "permission.asked":
-        case "question.asked":
-          console.log(`[Telegram] ${event.type}`)
-          send(MSG_CHOICE_FALLBACK(projectName))
-          break
-        case "tool.execute.before": {
-          const tool = event.properties?.tool
-          const input = event.properties?.input
-          if (tool) {
-            const desc = input ? Object.values(input).filter(Boolean).slice(0, 2).join(", ") : ""
-            report.tools.push({ tool, input: desc })
-            console.log(`[Telegram] tool: ${tool} (${report.tools.length} total)`)
-          }
-          break
-        }
-        case "session.updated": {
-          const diffs = event.properties?.info?.summary?.diffs
-          console.log(`[Telegram] session.updated: diffs=${diffs?.length || 0}`)
-          if (diffs?.length) {
-            report.files = diffs.map((d: any) => d.file)
+        case "session.diff": {
+          const diff = event.properties?.diff
+          console.log(`[Telegram] session.diff: files=${diff?.length || 0}`)
+          if (diff?.length) {
+            report.files = diff.map((d: any) => d.file)
             console.log(`[Telegram] files: ${report.files.join(", ")}`)
             trySendCompletion()
           }
           break
         }
+        case "permission.asked":
+        case "question.asked":
+          console.log(`[Telegram] ${event.type}`)
+          send(MSG_CHOICE_FALLBACK(projectName))
+          break
+        case "file.edited": {
+          const file = event.properties?.file
+          if (file && !report.files.includes(file)) {
+            report.files.push(file)
+            console.log(`[Telegram] file.edited: ${file} (${report.files.length} total)`)
+            trySendCompletion()
+          }
+          break
+        }
+      }
+    },
+
+    "tool.execute.before": async (input, _output) => {
+      if (input.tool) {
+        report.tools.push({ tool: input.tool, input: "" })
+        console.log(`[Telegram] tool.execute.before: ${input.tool} (${report.tools.length} total)`)
       }
     },
 
