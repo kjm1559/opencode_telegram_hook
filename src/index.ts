@@ -21,10 +21,12 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   const chatId = process.env.TELEGRAM_CHAT_ID || ""
 
   if (!botToken || !chatId) {
+    console.log(`[Telegram Plugin] Missing credentials: token=${!!botToken}, chatId=${!!chatId}`)
     return { event: async () => {}, config: async () => {} }
   }
 
   const projectName = directory.split("/").pop() || "unknown"
+  console.log(`[Telegram Plugin] Initialized for ${projectName}`)
   let report: WorkReport = { tools: [], files: [] }
   let pendingCompletion = false
   let sending = false
@@ -44,16 +46,19 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   function setIdle() {
     pendingCompletion = true
+    console.log(`[Telegram] idle set, files=${report.files.length}, tools=${report.tools.length}`)
     trySendCompletion()
   }
 
   function trySendCompletion() {
+    console.log(`[Telegram] trySend: sending=${sending}, pending=${pendingCompletion}, files=${report.files.length}`)
     if (sending || !pendingCompletion || report.files.length === 0) return
     sending = true
     const msg = buildCompletionMessage(report, projectName)
     report = { tools: [], files: [] }
     pendingCompletion = false
-    send(msg).finally(() => { sending = false })
+    console.log(`[Telegram] sending: ${msg.substring(0, 100)}...`)
+    send(msg).then(ok => console.log(`[Telegram] sent: ${ok}`)).catch(e => console.error(`[Telegram] error:`, e)).finally(() => { sending = false })
   }
 
   return {
@@ -61,15 +66,18 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
       switch (event.type) {
         case "session.status": {
           const type = event.properties?.status?.type
+          console.log(`[Telegram] session.status: ${type}`)
           if (type === "idle") setIdle()
           else if (type === "busy") { pendingCompletion = false; report = { tools: [], files: [] } }
           break
         }
         case "session.idle":
+          console.log(`[Telegram] session.idle`)
           setIdle()
           break
         case "permission.asked":
         case "question.asked":
+          console.log(`[Telegram] ${event.type}`)
           send(MSG_CHOICE_FALLBACK(projectName))
           break
         case "tool.execute.before": {
@@ -78,13 +86,16 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           if (tool) {
             const desc = input ? Object.values(input).filter(Boolean).slice(0, 2).join(", ") : ""
             report.tools.push({ tool, input: desc })
+            console.log(`[Telegram] tool: ${tool} (${report.tools.length} total)`)
           }
           break
         }
         case "session.updated": {
           const diffs = event.properties?.info?.summary?.diffs
+          console.log(`[Telegram] session.updated: diffs=${diffs?.length || 0}`)
           if (diffs?.length) {
             report.files = diffs.map((d: any) => d.file)
+            console.log(`[Telegram] files: ${report.files.join(", ")}`)
             trySendCompletion()
           }
           break
@@ -93,7 +104,8 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     },
 
     config: async () => {
-      send(MSG_CONNECTED(projectName))
+      console.log(`[Telegram] config called`)
+      send(MSG_CONNECTED(projectName)).then(ok => console.log(`[Telegram] connected: ${ok}`))
     },
   }
 }
