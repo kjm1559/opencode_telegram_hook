@@ -19,7 +19,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const projectName = directory.split("/").pop() || "unknown"
 
   let workSummary: WorkSummary | null = null
-  let isIdle = false
+  let pendingCompletion = false
 
   async function sendMessage(text: string) {
     try {
@@ -51,13 +51,13 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
         const status = event.properties?.status
         
         if (status?.type === "idle") {
-          isIdle = true
+          pendingCompletion = true
           // 요약이 이미 있으면 즉시 전송
           if (workSummary) {
             await sendCompletionMessage()
           }
         } else if (status?.type === "busy") {
-          isIdle = false
+          pendingCompletion = false
           workSummary = null
         }
         return
@@ -65,7 +65,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       
       // session.idle 이벤트 처리 (fallback)
       if (event.type === "session.idle") {
-        isIdle = true
+        pendingCompletion = true
         if (workSummary) {
           await sendCompletionMessage()
         }
@@ -100,8 +100,8 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
             
             workSummary = summary
             
-            // idle 상태이고 요약이 있으면 즉시 전송
-            if (isIdle && workSummary) {
+            // idle 대기 중이고 요약이 있으면 전송
+            if (pendingCompletion && workSummary) {
               await sendCompletionMessage()
             }
           }
@@ -130,7 +130,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 ✅ 작업이 완료되었습니다.`
       await sendMessage(message)
       workSummary = null
-      isIdle = false
+      pendingCompletion = false
     } catch (error) {
       console.error(`[Telegram] Error:`, error)
     }
