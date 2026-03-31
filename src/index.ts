@@ -42,15 +42,20 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   function extractSummary(event: any) {
     const summary = getSummaryFromEvent(event)
     if (!summary) return
-    if (!summary.body && summary.diffs?.length) {
-      summary.body = `변경 파일 ${summary.diffs.length}개:\n${summary.diffs.map((d: any) => `- ${d.file}`).join("\n")}`
-    }
     workSummary = summary
     if (pendingCompletion) trySendCompletion()
   }
 
+  function extractPartText(event: any) {
+    const text = event.properties?.part?.text
+    if (!text) return
+    if (!workSummary) workSummary = {}
+    workSummary.body = text
+    if (pendingCompletion) trySendCompletion()
+  }
+
   function trySendCompletion() {
-    if (sending || !workSummary) return
+    if (sending || !workSummary?.body) return
     sending = true
     const currentSummary = workSummary
     workSummary = null
@@ -77,6 +82,9 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
         case "session.updated":
         case "message.updated":
           extractSummary(event)
+          break
+        case "message.part.updated":
+          extractPartText(event)
           break
       }
     },
