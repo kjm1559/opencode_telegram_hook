@@ -412,7 +412,59 @@ if (rawID?.startsWith("ses_")) resetForSession(rawID)
 - **Never trust `info.id` blindly**: It can be any entity's ID depending on event type
 - **Hook `sessionID` is reliable**: `tool.execute.before` always provides `ses_` format
 
+### Problem 12: session.diff Returns Cumulative Data (Duplicate Files)
+
+**Symptom:**
+```
+[Telegram] session.diff: files=4
+[Telegram] files: HISTORY.md, README.md, doc/event-types-reference.md, src/index.ts
+```
+- 매번 같은 파일 목록이 반복됨. 전송 후 리포트를 초기화해도 다음 `session.diff`에서 같은 파일들이 다시 들어옴.
+
+**Root Cause:**
+- `session.diff`는 **증분(incremental) 변경**이 아니라 **세션 전체의 누적 diff**를 반환
+- 리포트 초기화 후에도 OpenCode 측의 세션 diff는 유지되므로, 다음 이벤트에서 같은 파일들이 재누적됨
+
+**Solution:**
+- `session.diff` 핸들러 완전 제거
+- `session.updated` 이벤트의 `info.summary.diffs`로 파일 변경 추적
+- `session.updated`는 세션 상태 변경 시 발생하며, summary.diffs는 더 안정적인 데이터 소스
+
+---
+
+### Problem 13: Tool Input Data Missing from Completion Messages
+
+**Symptom:**
+```
+🔧 사용된 도구 (3개):
+  1. bash
+  2. bash
+  3. bash
+```
+- 도구 이름만 표시되고 어떤 작업을 했는지 알 수 없음
+
+**Root Cause:**
+- `tool.execute.before` 훅의 `output.args`를 무시하고 빈 문자열 저장
+
+**Solution:**
+- `summarizeToolInput` 함수 추가: 도구별 의미 있는 입력값 추출
+- `edit/write/read` → 파일명, `bash` → 명령어, `task` → 설명 등
+
+---
+
+## Common Patterns & Lessons Learned (Updated)
+
+### Pattern 5: Session ID Identification
+- **Always check prefix**: `ses_` = session, `msg_` = message, `part_` = part
+- **Never trust `info.id` blindly**: It can be any entity's ID depending on event type
+- **Hook `sessionID` is reliable**: `tool.execute.before` always provides `ses_` format
+
 ### Pattern 6: Debounce for Completion
 - **Idle ≠ Complete**: Tools fire busy/idle cycles between each execution
 - **Use timer-based debounce**: Only send after sustained idle period
 - **Preserve state during busy**: Don't reset accumulated data on busy events
+
+### Pattern 7: Cumulative vs Incremental Events
+- **`session.diff` is cumulative**: Returns entire session diff, not just new changes
+- **Prefer `session.updated`**: `info.summary.diffs` is more reliable for file tracking
+- **Always verify event semantics**: Don't assume events are incremental without testing

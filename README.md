@@ -73,7 +73,7 @@ bun run build
 | `session.status (busy)` | 대기 중인 타이머 취소 (리포트는 누적 유지) |
 | `session.status (idle)` | 완료 타이머 예약 (8초 debounce) |
 | `session.idle` | 완료 타이머 예약 (fallback) |
-| `session.diff` | 변경 파일 수집 |
+| `session.updated` | 변경 파일 수집 (`info.summary.diffs`) |
 | `permission.asked` / `question.asked` | 선택 필요 알림 |
 
 ### Hooks (별도 등록)
@@ -89,7 +89,7 @@ bun run build
 - 단일 파일 구현
 - 각 인스턴스 독립 동작
 - `tool.execute.before`는 별도 훅으로 등록 (이벤트 아님)
-- `session.diff`는 OpenCode 가 계산한 파일 diff 를 직접 수신
+- `session.updated`는 OpenCode 가 계산한 파일 diff 를 직접 수신 (`info.summary.diffs`)
 
 ### 작업 완료 감지 (Debounce)
 
@@ -116,6 +116,22 @@ if (sessionID) resetForSession(sessionID)
 ```
 
 `tool.execute.before` 훅의 `input.sessionID`는 항상 `ses_` 형식이므로 추가 세션 추적에 활용합니다.
+
+### 도구 입력값 요약
+
+`tool.execute.before` 훅의 `output.args`에서 도구별 의미 있는 입력값을 추출하여 메시지에 포함합니다:
+
+| 도구 | 표시 내용 |
+|------|----------|
+| `edit` / `write` / `read` | 파일 경로 |
+| `bash` | 명령어 (80자 제한) |
+| `glob` / `grep` | 검색 패턴 |
+| `task` | 서브태스크 설명 |
+| 기타 | 주요 인자 키 또는 첫 3개 필드명 |
+
+### 파일 변경 추적
+
+`session.diff`는 세션 전체의 누적 diff를 반환하므로 증분 변경이 아닙니다. 대신 `session.updated` 이벤트의 `info.summary.diffs`를 사용하여 파일 변경을 추적합니다.
 
 ## Troubleshooting
 
