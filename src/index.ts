@@ -2,9 +2,6 @@ import type { Plugin, PluginInput } from "@opencode-ai/plugin"
 import { getSummaryFromEvent, type WorkSummary } from "./summary-accessor"
 import { formatCompletionMessage, formatChoiceMessage } from "./message-formatter"
 
-const MSG_COMPLETION_FALLBACK = (name: string) =>
-  `<b>[${name}] 작업 완료</b>\n\n✅ 작업이 완료되었습니다.`
-
 const MSG_CHOICE_FALLBACK = (name: string) =>
   `<b>[${name}] 선택 필요</b>\n\n⚠️ 작업을 계속하기 위해 선택이 필요합니다.`
 
@@ -38,19 +35,8 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   let sending = false
 
-  async function sendCompletion() {
-    if (sending) return
-    sending = true
-    const currentSummary = workSummary
-    workSummary = null
-    pendingCompletion = false
-    await send(currentSummary ? formatCompletionMessage(currentSummary, projectName) : MSG_COMPLETION_FALLBACK(projectName))
-    sending = false
-  }
-
   function setIdle() {
     pendingCompletion = true
-    if (workSummary) sendCompletion()
   }
 
   function extractSummary(event: any) {
@@ -60,7 +46,16 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
       summary.body = `변경 파일 ${summary.diffs.length}개:\n${summary.diffs.map((d: any) => `- ${d.file}`).join("\n")}`
     }
     workSummary = summary
-    if (pendingCompletion) sendCompletion()
+    if (pendingCompletion) trySendCompletion()
+  }
+
+  function trySendCompletion() {
+    if (sending || !workSummary) return
+    sending = true
+    const currentSummary = workSummary
+    workSummary = null
+    pendingCompletion = false
+    send(formatCompletionMessage(currentSummary, projectName)).finally(() => { sending = false })
   }
 
   return {
