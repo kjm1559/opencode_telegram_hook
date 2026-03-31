@@ -19,6 +19,7 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
   const projectName = directory.split("/").pop() || "unknown"
 
   let workSummary: WorkSummary | null = null
+  let isIdle = false
 
   async function sendMessage(text: string) {
     try {
@@ -45,53 +46,33 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
   return {
     event: async ({ event }) => {
-      console.log(`[Telegram Event] type: ${event.type}`)
-      
-      // session.status 이벤트 처리
+      // 세션 상태 이벤트 처리
       if (event.type === "session.status") {
         const status = event.properties?.status
-        console.log(`[DEBUG] session.status: status.type=${status?.type}, workSummary=${workSummary ? 'exists' : 'null'}`)
         
         if (status?.type === "idle") {
-          // 작업 완료 - 메시지 전송
-          try {
-            const message = workSummary
-              ? formatCompletionMessage(workSummary, projectName)
-              : `<b>[${projectName}] 작업 완료</b>
-
-✅ 작업이 완료되었습니다.`
-            await sendMessage(message)
-            console.log(`[Telegram Event] ✅ Session completed (idle), sent completion message`)
-          } catch (error) {
-            console.error(`[Telegram Event] Error sending completion message:`, error)
+          isIdle = true
+          // 요약이 이미 있으면 즉시 전송
+          if (workSummary) {
+            await sendCompletionMessage()
           }
-          workSummary = null
         } else if (status?.type === "busy") {
-          // 작업 시작 - 요약 초기화
+          isIdle = false
           workSummary = null
-          console.log(`[Telegram Event] Session started (busy), cleared workSummary`)
         }
         return
       }
       
-      // session.idle 이벤트 처리 (deprecated but still fires)
+      // session.idle 이벤트 처리 (fallback)
       if (event.type === "session.idle") {
-        console.log(`[DEBUG] session.idle event, workSummary=${workSummary ? 'exists' : 'null'}`)
-        try {
-          const message = workSummary
-            ? formatCompletionMessage(workSummary, projectName)
-            : `<b>[${projectName}] 작업 완료</b>
-
-✅ 작업이 완료되었습니다.`
-          await sendMessage(message)
-          console.log(`[Telegram Event] ✅ Session idle, sent completion message`)
-        } catch (error) {
-          console.error(`[Telegram Event] Error sending completion message:`, error)
+        isIdle = true
+        if (workSummary) {
+          await sendCompletionMessage()
         }
-        workSummary = null
         return
       }
       
+      // 선택 필요 이벤트 처리
       if (event.type === "permission.asked" || event.type === "question.asked") {
         try {
           const message = workSummary
@@ -100,17 +81,16 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
 
 ⚠️ 작업을 계속하기 위해 선택이 필요합니다.`
           await sendMessage(message)
-          console.log(`[Telegram Event] Choice required, sent message`)
         } catch (error) {
-          console.error(`[Telegram Event] Error sending choice message:`, error)
+          console.error(`[Telegram] Error:`, error)
         }
         return
       }
       
+      // 요약 데이터 수집 (message.updated / session.updated)
       if (event.type === "session.updated" || event.type === "message.updated") {
         try {
           const summary = getSummaryFromEvent(event)
-          console.log(`[DEBUG] ${event.type}: summary=${summary ? 'exists' : 'null'}, body=${summary?.body ? summary.body.substring(0, 30) + '...' : 'empty'}, diffs=${summary?.diffs?.length || 0}`)
           
           if (summary) {
             // body 가 없으면 diffs 로 요약 생성
@@ -119,10 +99,14 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
             }
             
             workSummary = summary
-            console.log(`[Telegram Event] Extracted summary: ${summary.body ? summary.body.substring(0, 50) : 'no body'}...`)
+            
+            // idle 상태이고 요약이 있으면 즉시 전송
+            if (isIdle && workSummary) {
+              await sendCompletionMessage()
+            }
           }
         } catch (error) {
-          console.error(`[Telegram Event] Error extracting summary:`, error)
+          console.error(`[Telegram] Error:`, error)
         }
       }
     },
@@ -131,12 +115,24 @@ export const TelegramPlugin: Plugin = async (input: PluginInput) => {
       console.log(`[Telegram Plugin] Initialized for ${projectName}`)
       console.log(`  Chat ID: ${chatId}`)
       
-      // 시작 시 테스트 메시지 전송
-      await sendMessage(`
-<b>[${projectName}] 플러그인 시작</b>
+      await sendMessage(`<b>[${projectName}] 플러그인 시작</b>
 
-테스트 메시지입니다.
-      `.trim())
+테스트 메시지입니다.`)
+    }
+  }
+
+  async function sendCompletionMessage() {
+    try {
+      const message = workSummary
+        ? formatCompletionMessage(workSummary, projectName)
+        : `<b>[${projectName}] 작업 완료</b>
+
+✅ 작업이 완료되었습니다.`
+      await sendMessage(message)
+      workSummary = null
+      isIdle = false
+    } catch (error) {
+      console.error(`[Telegram] Error:`, error)
     }
   }
 }
