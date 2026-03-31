@@ -1,5 +1,4 @@
 import type { Plugin, PluginInput } from "@opencode-ai/plugin"
-import { getSummaryFromEvent, type WorkSummary } from "./summary-accessor"
 import { formatCompletionMessage, formatChoiceMessage } from "./message-formatter"
 
 const MSG_CHOICE_FALLBACK = (name: string) =>
@@ -17,7 +16,7 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
   }
 
   const projectName = directory.split("/").pop() || "unknown"
-  let workSummary: WorkSummary | null = null
+  let workSummary: { body?: string } | null = null
   let pendingCompletion = false
 
   async function send(text: string) {
@@ -37,33 +36,44 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   function setIdle() {
     pendingCompletion = true
+    console.log(`[DEBUG] setIdle: pendingCompletion=true`)
   }
 
   function extractSummary(event: any) {
-    const summary = getSummaryFromEvent(event)
-    if (!summary) return
-    const existingBody = workSummary?.body
-    workSummary = summary
-    if (existingBody) workSummary.body = existingBody
-    if (pendingCompletion) trySendCompletion()
-  }
+    const info = event.properties?.info
+    if (!info) return
 
-  function extractPartText(event: any) {
-    const text = event.properties?.part?.text
-    if (!text) return
-    if (!workSummary) workSummary = {}
-    workSummary.body = text
-    if (pendingCompletion) trySendCompletion()
+    // message.updated: role === "user"일 때 summary.body 사용 (요약 에이전트 결과)
+    if (event.type === "message.updated" && info.role === "user") {
+      const body = info.summary?.body
+      console.log(`[DEBUG] message.updated (user): hasBody=${!!body}, bodyPreview=${body ? body.substring(0, 50) : 'none'}`)
+      if (body) {
+        workSummary = { body }
+        if (pendingCompletion) trySendCompletion()
+      }
+      return
+    }
+
+    // session.updated: 파일 변경 사항 사용
+    if (event.type === "session.updated") {
+      const s = info.summary
+      if (s?.diffs?.length) {
+        const body = `변경 파일 ${s.diffs.length}개:\n${s.diffs.map((d: any) => `- ${d.file}`).join("\n")}`
+        console.log(`[DEBUG] session.updated: files=${s.files}, diffs=${s.diffs.length}`)
+        workSummary = { body }
+        if (pendingCompletion) trySendCompletion()
+      }
+    }
   }
 
   function trySendCompletion() {
-    console.log(`[DEBUG] trySendCompletion: sending=${sending}, hasBody=${!!workSummary?.body}`)
+    console.log(`[DEBUG] trySendCompletion: sending=${sending}, hasSummary=${!!workSummary}, hasBody=${!!workSummary?.body}`)
     if (sending || !workSummary?.body) return
     sending = true
     const currentSummary = workSummary
     workSummary = null
     pendingCompletion = false
-    console.log(`[DEBUG] Sending completion message`)
+    console.log(`[DEBUG] Sending completion message, bodyLen=${currentSummary.body?.length}`)
     send(formatCompletionMessage(currentSummary, projectName)).finally(() => { sending = false })
   }
 
@@ -86,9 +96,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
         case "session.updated":
         case "message.updated":
           extractSummary(event)
-          break
-        case "message.part.updated":
-          extractPartText(event)
           break
       }
     },
