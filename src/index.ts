@@ -83,10 +83,10 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
 
   return {
     event: async ({ event }) => {
-      const sessionID = event.properties?.info?.id
+      const rawID = event.properties?.info?.id
         ?? event.properties?.sessionID
         ?? event.properties?.status?.sessionID
-      if (sessionID) resetForSession(sessionID)
+      if (rawID?.startsWith("ses_")) resetForSession(rawID)
 
       switch (event.type) {
         case "session.status": {
@@ -94,7 +94,6 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
           console.log(`[Telegram] session.status: ${type}`)
           if (type === "busy") {
             cancelScheduledSend()
-            report = { tools: [], files: [] }
           } else if (type === "idle") {
             scheduleSendCompletion()
           }
@@ -125,6 +124,7 @@ export const TelegramPlugin: Plugin = async ({ directory }: PluginInput) => {
     },
 
     "tool.execute.before": async (input, _output) => {
+      if (input.sessionID?.startsWith("ses_")) resetForSession(input.sessionID)
       if (input.tool) {
         report.tools.push({ tool: input.tool, input: "" })
         console.log(`[Telegram] tool.execute.before: ${input.tool} (${report.tools.length} total)`)
