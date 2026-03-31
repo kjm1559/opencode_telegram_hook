@@ -6,27 +6,18 @@ A plugin that sends notifications with work summaries to Telegram when OpenCode 
 
 ### Work Completion Notification (with Summary)
 
-When work is completed, the plugin sends a detailed summary:
+When work is completed, the plugin sends a summary:
 
 ```
 [project-name] 작업 완료
 
-제목: 작업 제목
-
-작업 내용 요약
-
-📝 변경 사항:
-• file1.ts
-• file2.ts
+[작업 요약 내용]
 
 ✅ 작업이 완료되었습니다.
 ```
 
 **Summary includes:**
-- Work title and description
-- File changes (added/modified/deleted)
-- Code statistics (additions/deletions)
-- Affected files list
+- Summary text from OpenCode's summary agent (via `message.part.updated` events)
 
 ### Choice Required Notification (with Summary)
 
@@ -96,18 +87,21 @@ Notifications will be sent to Telegram when work is completed or when a choice i
 ## Events
 
 ### session.status (status.type === "idle")
-Sends notification when work is completed
+Sends notification when work is completed (primary method)
 
-**Note**: OpenCode does NOT emit `session.completed` or `session.finished`. Session completion is signaled by `session.status` event with `status.type === "idle"`.
+### session.idle
+Sends notification when work is completed (fallback, deprecated but still fires)
+
+**Note**: OpenCode does NOT emit `session.completed` or `session.finished`. Session completion is signaled by `session.status` event with `status.type === "idle"` or the separate `session.idle` event.
 
 ### session.status (status.type === "busy")
 Initializes work summary when work starts
 
-### session.updated
-Collects session information (title, directory)
+### message.updated
+Collects session information (title, diffs)
 
-### message.updated / message.part.updated
-Updates work summary with progress
+### message.part.updated
+Extracts summary agent response (part.text) for work summary content
 
 ## Troubleshooting
 
